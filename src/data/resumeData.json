@@ -1,0 +1,86 @@
+{
+  "name": "HARVINDER",
+  "tagline": "Cyber Security Specialist | Penetration Tester",
+  "contact": {
+    "phone": "+91 9650961655",
+    "email": "harvinderofficial1999@gmail.com",
+    "linkedin": "linkedin.com/in/harvinder-singh369"
+  },
+  "education": [
+    {
+      "degree": "B.Tech (Computer Science)",
+      "date": "Aug 2023",
+      "institution": "G.B Pant DSEU Okhla Campus III",
+      "score": "8.3 CGPA"
+    }
+  ],
+  "experience": [
+    {
+      "role": "Assistant Manager",
+      "company": "BSES RAJDHANI",
+      "period": "Sep 2023 - Present",
+      "details": [
+        "Conducted Web and Android Application Security Testing using SAST and DAST methodologies across 100+ internal applications",
+        "Performed Vulnerability Assessment and Penetration Testing (VAPT) aligned with OWASP Top 10, identifying 150+ vulnerabilities including SQL Injection, XSS, SSRF, IDOR, File Upload, JWT flaws, and Access Control issues",
+        "Executed Nessus-based infrastructure vulnerability scans across enterprise networks, supporting remediation and re-validation",
+        "Performed manual security testing for authentication, authorization, session management, and business logic vulnerabilities",
+        "Analyzed Android applications using ADB, MobSF, Burp Suite, and Frida to detect runtime misconfigurations, insecure storage, and sensitive data exposure",
+        "Assisted in OT Security proof-of-concept evaluations, strengthening organizational cyber resilience",
+        "Collaborated with development and infrastructure teams to validate fixes, reducing critical vulnerabilities by an estimated 50% post-remediation",
+        "Prepared detailed VAPT reports including risk assessment, CVSS scoring, PoCs, and remediation recommendations"
+      ]
+    }
+  ],
+  "skills": {
+    "Testing Areas": ["Web Application Security", "Android Pentesting", "Infrastructure VA", "OT & SCADA Security", "API Security Testing"],
+    "Methodologies": ["OWASP Top 10", "SAST", "DAST", "Secure SDLC", "Risk Assessment", "CVSS Scoring"],
+    "Tools": ["Burp Suite", "Nessus", "Nmap", "MobSF", "Fortify", "Frida", "Kali Linux", "ADB"],
+    "Programming": ["C++", "C", "Java", "JavaScript"]
+  },
+  "projects": [
+    {
+      "name": "Application Security Simulator – Secure Coding Training Platform",
+      "date": "Feb 2026",
+      "technologies": ["ASP.NET Core", "HTML", "CSS", "JavaScript"],
+      "details": [
+        "Designed and developed an interactive application security training platform featuring live vulnerability simulations",
+        "Implemented vulnerable vs secure ASP.NET Core code examples to demonstrate real-world exploitation and mitigation",
+        "Covered OWASP Top vulnerabilities including SQL Injection, XSS, SSRF, JWT Weak Keys, File Upload, SSTI, LFI, Access Control, and CSV Injection",
+        "Built HTTP request/response visualization to help developers understand attack flow and security impact",
+        "Deployed a live web application with downloadable SOP documentation, improving developer security awareness"
+      ],
+      "link": "#"
+    }
+  ],
+  "certificates": [
+    {
+      "name": "Certified Ethical Hacker (CEH)",
+      "issuer": "EC-Council",
+      "year": "2025"
+    },
+    {
+      "name": "CII SECEX Participation",
+      "issuer": "NCIIPC",
+      "year": "2025"
+    },
+    {
+      "name": "Sector Specific Cyber Security",
+      "issuer": "Rashtriya Raksha University (RRU)",
+      "year": "2026"
+    }
+  ],
+  "awards": [
+    {
+      "title": "Star Award – Q2",
+      "issuer": "BSES Rajdhani",
+      "year": "2026",
+      "description": "Awarded for delivering high-impact vulnerability assessments and strengthening application security posture."
+    },
+    {
+      "title": "Application Security Training Lead",
+      "issuer": "BSES Rajdhani & BSES Yamuna Power",
+      "year": "2026",
+      "description": "Designed and delivered secure coding workshops for developers, covering OWASP Top 10 vulnerabilities with live simulation-based demonstrations."
+    }
+  ]
+}
