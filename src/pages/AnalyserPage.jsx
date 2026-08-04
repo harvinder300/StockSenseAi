@@ -3,7 +3,8 @@ import { getFullStockAnalysis } from '../services/stockDataService';
 import StockSearchInput from '../components/StockSearchInput';
 import StockChart from '../components/StockChart';
 import ConfidenceMeter from '../components/ConfidenceMeter';
-import { Layers, Sparkles, ArrowUpRight, ArrowDownRight, Wifi, WifiOff } from 'lucide-react';
+import MultiTimeframeWidget from '../components/MultiTimeframeWidget';
+import { Layers, Sparkles, ArrowUpRight, ArrowDownRight, Wifi, WifiOff, CheckCircle2 } from 'lucide-react';
 
 const QUICK_PICKS = ['RELIANCE.NS','TCS.NS','HDFCBANK.NS','INFY.NS','TATAMOTORS.NS','BHARTIARTL.NS','ITC.NS','LT.NS','SBIN.NS','WIPRO.NS'];
 
@@ -20,7 +21,7 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
       const data = await getFullStockAnalysis(sym, geminiApiKey);
       setAnalysis(data);
     } catch (err) {
-      console.error('Analysis error:', err);
+      console.error('Analysis: something went wrong');
     } finally {
       setLoading(false);
     }
@@ -35,29 +36,13 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
     onSymbolChange(fullSym.split('.')[0]);
   };
 
-  const signalClass = (sig) => {
-    if (sig === 'BUY')  return 'ss-signal ss-signal-buy';
-    if (sig === 'WAIT') return 'ss-signal ss-signal-wait';
-    return 'ss-signal ss-signal-hold';
-  };
-
-  const verdictBorderColor = (sig) => {
-    if (sig === 'BUY')  return 'rgba(0,255,136,0.3)';
-    if (sig === 'WAIT') return 'rgba(255,71,87,0.3)';
-    return 'rgba(245,158,11,0.3)';
-  };
-
-  const verdictBg = (sig) => {
-    if (sig === 'BUY')  return 'rgba(0,255,136,0.04)';
-    if (sig === 'WAIT') return 'rgba(255,71,87,0.04)';
-    return 'rgba(245,158,11,0.04)';
-  };
-
   const barColor = (rsi) => {
     if (rsi >= 70) return 'red';
     if (rsi <= 30) return 'green';
     return 'blue';
   };
+
+  const signalRes = analysis?.signalResult || {};
 
   return (
     <div className="fade-up">
@@ -69,11 +54,11 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
             Stock <span style={{ color: '#00d4ff' }}>Analyser</span>
           </h1>
           <p style={{ fontSize: 14, color: '#8892a4' }}>
-            Search any NSE/BSE stock — live Yahoo Finance data, real RSI &amp; MACD, Gemini AI analysis.
+            Search any NSE/BSE stock — live Yahoo Finance data, weighted signal scoring, Gemini AI analysis.
           </p>
         </div>
 
-        {/* Shared StockSearchInput — same component as Compare page */}
+        {/* Shared StockSearchInput */}
         <div style={{ maxWidth: 640, margin: '0 auto 20px' }}>
           <StockSearchInput
             placeholder="Type company name or NSE ticker e.g. Reliance, TCS, HDFC…"
@@ -136,12 +121,15 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
           </div>
 
           {/* 3-Month Candlestick Chart */}
-          <StockChart candles={analysis.candles} symbol={analysis.meta.symbol} />
+          <StockChart candles={analysis.candles} symbol={analysis.meta.symbol} rawCandles={analysis.multiData?.rawCandles} />
 
-          {/* ── FIX 3: Gemini AI Analysis Card ── */}
+          {/* Multi-Timeframe Analysis Widget */}
+          <MultiTimeframeWidget multiData={analysis.multiData} />
+
+          {/* ── Weighted Signal Analysis Card ── */}
           <div style={{
-            background:   verdictBg(analysis.aiAnalysis.signal),
-            border:       `2px solid ${verdictBorderColor(analysis.aiAnalysis.signal)}`,
+            background:   `${signalRes.color || '#00d4ff'}08`,
+            border:       `2px solid ${signalRes.color || '#00d4ff'}40`,
             borderRadius: 'var(--radius-lg)',
             padding:      28,
           }}>
@@ -151,45 +139,71 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
                 {/* Icon */}
                 <div style={{
                   width: 48, height: 48, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: analysis.aiAnalysis.signal === 'BUY' ? 'rgba(0,255,136,0.15)' : analysis.aiAnalysis.signal === 'WAIT' ? 'rgba(255,71,87,0.15)' : 'rgba(245,158,11,0.15)',
-                  color: analysis.aiAnalysis.signal === 'BUY' ? '#00ff88' : analysis.aiAnalysis.signal === 'WAIT' ? '#ff4757' : '#f59e0b',
+                  background: `${signalRes.color || '#00d4ff'}20`,
+                  color: signalRes.color || '#00d4ff',
                 }}>
                   <Sparkles size={22} />
                 </div>
                 {/* Verdict + Signal */}
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
-                    {analysis.aiAnalysis.isGeminiLive ? '✦ Gemini AI Analysis' : '✦ Built-in AI Analysis'}
+                    {analysis.aiAnalysis.isGeminiLive ? '✦ Gemini AI & Weighted Signal Engine' : '✦ Technical Signal Engine'}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <span style={{
-                      color: analysis.aiAnalysis.verdict === 'Bullish' ? '#00ff88' : analysis.aiAnalysis.verdict === 'Bearish' ? '#ff4757' : '#f59e0b',
-                      fontFamily: 'Poppins,sans-serif', fontSize: 15, fontWeight: 800,
+                      color: signalRes.color || '#00d4ff',
+                      fontFamily: 'Poppins,sans-serif', fontSize: 16, fontWeight: 800,
                     }}>
-                      {analysis.aiAnalysis.verdict}
+                      {signalRes.emoji} {signalRes.verdict || analysis.aiAnalysis.verdict}
                     </span>
                     <span style={{ color: '#4a5568' }}>·</span>
-                    <span style={{ fontSize: 13, color: '#8892a4', fontWeight: 600 }}>Signal:</span>
-                    <span className={signalClass(analysis.aiAnalysis.signal)}>
-                      {analysis.aiAnalysis.signal}
+                    <span style={{ fontSize: 13, color: '#8892a4', fontWeight: 600 }}>Action:</span>
+                    <span style={{
+                      background: `${signalRes.color || '#00d4ff'}20`,
+                      color: signalRes.color || '#00d4ff',
+                      border: `1px solid ${signalRes.color || '#00d4ff'}40`,
+                      fontWeight: 900,
+                      padding: '4px 14px',
+                      borderRadius: 99,
+                      fontSize: 12,
+                      textTransform: 'uppercase'
+                    }}>
+                      {signalRes.action || analysis.aiAnalysis.signal}
                     </span>
-                    {analysis.aiAnalysis.keyPrice && (
-                      <span className="ss-badge ss-badge-amber">
-                        Watch ₹{analysis.aiAnalysis.keyPrice}
-                      </span>
-                    )}
+                    <span style={{ color: '#4a5568' }}>·</span>
+                    <span style={{ fontSize: 13, color: '#8892a4', fontWeight: 600 }}>Signal Score:</span>
+                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 15, fontWeight: 800, color: signalRes.color || '#00d4ff' }}>
+                      {signalRes.score || 50}/100
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
 
+            {/* Signal Reasons Breakdown */}
+            {signalRes.reasons && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+                  Signal Score Breakdown
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
+                  {signalRes.reasons.map((reason, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(0,0,0,0.25)', padding: '10px 14px', borderRadius: 8, fontSize: 13, color: '#c8d0e0', fontWeight: 500 }}>
+                      <CheckCircle2 size={15} color="#00d4ff" style={{ flexShrink: 0 }} />
+                      <span>{reason}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Confidence Score Widget */}
             <ConfidenceMeter confidence={analysis.confidence} />
 
-            {/* Gemini Full Response Text */}
+            {/* Gemini / Analysis Text */}
             <div style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 'var(--radius)', padding: '18px 20px', marginTop: 24 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
-                Analysis
+                Detailed AI Analysis
               </div>
               <p style={{ fontSize: 14, color: '#c8d0e0', lineHeight: 1.75, fontWeight: 500, whiteSpace: 'pre-line' }}>
                 {analysis.aiAnalysis.reason}
@@ -256,15 +270,10 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
                 </span>
               </div>
               <div className="ss-ind-body">
-                <div className="ss-ind-row"><span>MACD Line:</span>   <strong>{analysis.macd.macd}</strong></div>
-                <div className="ss-ind-row"><span>Signal Line:</span> <strong>{analysis.macd.signal}</strong></div>
-                <div className="ss-ind-row">
-                  <span>Histogram:</span>
-                  <strong style={{ color: analysis.macd.histogram >= 0 ? '#00ff88' : '#ff4757' }}>
-                    {analysis.macd.histogram > 0 ? '+' : ''}{analysis.macd.histogram}
-                  </strong>
-                </div>
-                <p className="ss-ind-desc" style={{ marginTop: 8 }}>{analysis.macd.explanation}</p>
+                <div className="ss-ind-row"><span>MACD Line:</span><strong>{analysis.macd.macd}</strong></div>
+                <div className="ss-ind-row"><span>Signal Line:</span><strong>{analysis.macd.signal}</strong></div>
+                <div className="ss-ind-row"><span>Histogram:</span><strong style={{ color: analysis.macd.histogram >= 0 ? '#00ff88' : '#ff4757' }}>{analysis.macd.histogram >= 0 ? '+' : ''}{analysis.macd.histogram}</strong></div>
+                <p className="ss-ind-desc" style={{ marginTop: 10 }}>{analysis.macd.explanation}</p>
               </div>
             </div>
 

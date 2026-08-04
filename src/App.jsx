@@ -6,17 +6,18 @@ import AnalyserPage from './pages/AnalyserPage';
 import ComparePage from './pages/ComparePage';
 import LearnPage from './pages/LearnPage';
 import { TrendingUp } from 'lucide-react';
+import { secureStorage } from './utils/security';
 
-const DEFAULT_GEMINI_KEY = '';
+const DEFAULT_GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 
 export default function App() {
   const [activeTab,       setActiveTab]       = useState('home');
   const [selectedSymbol,  setSelectedSymbol]  = useState('RELIANCE');
-  const [geminiApiKey,    setGeminiApiKey]    = useState(() => localStorage.getItem('stocksense_gemini_key') || DEFAULT_GEMINI_KEY);
+  const [geminiApiKey,    setGeminiApiKey]    = useState(() => secureStorage.get('stocksense_gemini_key') || DEFAULT_GEMINI_KEY);
   const [modalOpen,       setModalOpen]       = useState(false);
 
-  const saveKey  = (k) => { setGeminiApiKey(k); localStorage.setItem('stocksense_gemini_key', k); };
-  const clearKey = ()  => { setGeminiApiKey(''); localStorage.removeItem('stocksense_gemini_key'); };
+  const saveKey  = (k) => { setGeminiApiKey(k); secureStorage.set('stocksense_gemini_key', k); };
+  const clearKey = ()  => { setGeminiApiKey(''); secureStorage.remove('stocksense_gemini_key'); };
 
   const goStock  = (sym) => { setSelectedSymbol(sym); setActiveTab('analyser'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 

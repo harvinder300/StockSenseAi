@@ -1,7 +1,6 @@
 /**
  * geminiService.js
- * FIX 3 — Google Gemini API integration
- * Uses gemini-1.5-flash with exact prompt specified by user
+ * Google Gemini API integration with weighted scoring & Hinglish analysis
  */
 
 const DEFAULT_KEY = '';
@@ -17,27 +16,49 @@ export async function analyzeStockWithGemini({
   macd,
   detectedPatterns,
   confidence,
+  signalResult = null,
+  multiData = null,
   geminiApiKey = null,
 }) {
   const primaryPattern = detectedPatterns[0] || { name: 'No Pattern Detected', type: 'Neutral', simpleLanguage: 'Consolidating.' };
   const keyToUse = (geminiApiKey && geminiApiKey.trim().length > 10) ? geminiApiKey.trim() : DEFAULT_KEY;
 
-  // ── FIX 3: Exact Gemini API call as specified ──────────────
+  const score = signalResult?.score ?? confidence?.score ?? 50;
+  const verdict = signalResult?.verdict ?? 'Neutral';
+  const action = signalResult?.action ?? 'HOLD';
+  const reasons = signalResult?.reasons || [
+    `RSI is ${rsi.value} (${rsi.status})`,
+    `MACD signal is ${macd.status}`
+  ];
+
+  const priceVsMa50 = price > (confidence?.dma50 || price) ? 'Above 50 MA' : 'Below 50 MA';
+  const volumeRatio = confidence?.isHighVol ? '1.5+' : '1.0';
+
   if (keyToUse) {
     try {
-      const prompt = `You are an expert Indian stock market technical analyst. Analyze:
+      const prompt = `You are an expert Indian stock market analyst.
+
 Stock: ${name} (${symbol})
-Current Price: ₹${price} (${change >= 0 ? '+' : ''}${change}, ${pChange}%)
+Price: ₹${price}
+Signal Score: ${score}/100
 
-Signals detected: RSI=${rsi.value} (${rsi.status}), MACD=${macd.status}, Pattern=${primaryPattern.name}, Volume=${confidence.isHighVol ? '> 1.5x Avg' : '< 1.5x Avg'}, Confidence Score: ${confidence.score}%
+Indicators:
+RSI: ${rsi.value} (${rsi.status})
+MACD: ${macd.status}
+Price vs MA50: ${priceVsMa50}
+Volume: ${volumeRatio}x average
 
-Give:
-1. What this means in 2 simple lines. Mention the confidence score in your explanation. If score is below 40%, warn the user that signals are weak and to wait for confirmation.
-2. Overall verdict: Bullish/Bearish/Neutral
-3. Signal: Buy/Hold/Wait
-4. Key price to watch
+Signal Breakdown:
+${reasons.join('\n')}
 
-Keep it simple for retail investors.
+Overall Verdict: ${verdict}
+
+Write a 3-4 line analysis in simple Hindi-English (Hinglish) explaining:
+1. Kya ho raha hai is stock mein abhi
+2. ${score >= 55 ? 'Kyun yeh accha entry point lag raha hai' : 'Kyun abhi wait karna better hai'}
+3. Kya watch karna chahiye
+
+Score ${score}/100 mention karo.
 End with: ⚠️ Technical analysis only, not SEBI registered investment advice.`;
 
       const response = await fetch(
@@ -56,95 +77,62 @@ End with: ⚠️ Technical analysis only, not SEBI registered investment advice.
         const data = await response.json();
         const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-        // Parse verdict, signal, and key price from Gemini's free-text response
-        const verdictMatch = rawText.match(/verdict[:\s]*(Bullish|Bearish|Neutral)/i);
-        const signalMatch  = rawText.match(/signal[:\s]*(Buy|Hold|Wait|Sell)/i);
-        const priceMatch   = rawText.match(/(?:key price|watch|support|resistance)[^\d]*₹?([\d,]+\.?\d*)/i);
-
-        const verdict   = verdictMatch?.[1] || 'Neutral';
-        const rawSignal = signalMatch?.[1]  || 'Hold';
-        const signal    = rawSignal === 'Sell' ? 'WAIT' : rawSignal.toUpperCase();
-        const keyPrice  = priceMatch?.[1] || null;
-
         return {
-          isGeminiLive:    true,
+          isGeminiLive: true,
           verdict,
-          signal,
-          keyPrice,
-          reason:          rawText,        // full Gemini text displayed directly
-          rawGeminiText:   rawText,
+          signal: action,
+          keyPrice: null,
+          reason: rawText,
+          rawGeminiText: rawText,
           patternsExplanation: primaryPattern.simpleLanguage,
-          rsiExplanation:  rsi.explanation,
+          rsiExplanation: rsi.explanation,
           macdExplanation: macd.explanation,
         };
       } else {
-        const errData = await response.json().catch(() => ({}));
-        console.warn('Gemini API error:', response.status, errData?.error?.message);
+        console.warn('AI analysis: API returned non-OK status');
       }
     } catch (err) {
-      console.warn('Gemini call failed, using fallback engine:', err.message);
+      console.warn('AI analysis: service unavailable, using fallback');
     }
   }
 
   // ── Fallback: Built-in AI rules engine ────────────────────
-  let score = 0;
-  if (rsi.value >= 50 && rsi.value <= 68) score += 1;
-  if (rsi.value > 70)  score -= 1;
-  if (rsi.value < 30)  score += 1.5;
-  if (macd.status.includes('Bullish')) score += 1.5;
-  if (macd.status.includes('Bearish')) score -= 1.5;
-  if (primaryPattern.verdictImpact === 'Bullish') score += 1;
-  if (primaryPattern.verdictImpact === 'Bearish') score -= 1;
+  const fallbackText = `Stock: ${name} (${symbol}) - Score ${score}/100.
+${verdict === 'Strong Buy' || verdict === 'Moderate Buy' ? 'Abhi stock mein buying momentum dikh raha hai. Technical indicators positive hain.' : 'Abhi stock me mixed ya weak trend hai. Wait and watch approach better rahegi.'}
+Keep an eye on key support levels before placing orders.
 
-  let verdict, signal, reason;
-  if (score >= 1.5) {
-    verdict = 'Bullish';
-    signal  = 'BUY';
-    reason  = `${symbol} shows strong bullish alignment — MACD is positive and RSI momentum is healthy.\nConsider entering on minor dips with a stop-loss below recent support.\n\n⚠️ Technical analysis only, not SEBI registered investment advice.`;
-  } else if (score <= -1.5) {
-    verdict = 'Bearish';
-    signal  = 'WAIT';
-    reason  = `${symbol} is under selling pressure — MACD bearish and RSI declining.\nAvoid fresh positions until technical recovery signals appear.\n\n⚠️ Technical analysis only, not SEBI registered investment advice.`;
-  } else {
-    verdict = 'Neutral';
-    signal  = 'HOLD';
-    reason  = `${symbol} is consolidating with mixed signals — RSI is balanced and MACD shows no strong direction.\nExisting investors may hold. Fresh buyers should wait for a clear breakout.\n\n⚠️ Technical analysis only, not SEBI registered investment advice.`;
-  }
+⚠️ Technical analysis only, not SEBI registered investment advice.`;
 
   return {
-    isGeminiLive:    false,
+    isGeminiLive: false,
     verdict,
-    signal,
-    keyPrice:        null,
-    reason,
-    rawGeminiText:   null,
+    signal: action,
+    keyPrice: null,
+    reason: fallbackText,
+    rawGeminiText: fallbackText,
     patternsExplanation: primaryPattern.simpleLanguage,
-    rsiExplanation:  rsi.explanation,
+    rsiExplanation: rsi.explanation,
     macdExplanation: macd.explanation,
   };
 }
 
-/**
- * Compare two stocks using Gemini API (exact user-specified prompt)
- */
 export async function compareStocksWithGemini({ stockA, stockB, geminiApiKey = null }) {
   const keyToUse = (geminiApiKey && geminiApiKey.trim().length > 10) ? geminiApiKey.trim() : DEFAULT_KEY;
 
-  const prompt = `Compare these two Indian stocks:
-Stock A: ${stockA.name} (${stockA.symbol}), Price: ₹${stockA.price}, RSI: ${stockA.rsi}, MACD: ${stockA.macd}, Confidence Score: ${stockA.confidence.score}%
-Stock B: ${stockB.name} (${stockB.symbol}), Price: ₹${stockB.price}, RSI: ${stockB.rsi}, MACD: ${stockB.macd}, Confidence Score: ${stockB.confidence.score}%
-
-Tell me in simple language:
-1. Which is technically stronger RIGHT NOW? (Mention their confidence scores)
-2. Which suits a short term trader?
-3. Which suits a long term investor?
-4. Simple verdict: which one to watch this week?
-
-Keep it under 100 words. Simple English.
-End with: ⚠️ Technical analysis only, not SEBI registered investment advice.`;
+  const scoreA = stockA.signalResult?.score ?? stockA.confidence?.score ?? 50;
+  const scoreB = stockB.signalResult?.score ?? stockB.confidence?.score ?? 50;
 
   if (keyToUse) {
     try {
+      const prompt = `Compare these two Indian stocks for a retail investor:
+
+Stock A: ${stockA.name} (${stockA.symbol}) — ₹${stockA.price} (Score: ${scoreA}/100, Action: ${stockA.signalResult?.action || 'HOLD'})
+Stock B: ${stockB.name} (${stockB.symbol}) — ₹${stockB.price} (Score: ${scoreB}/100, Action: ${stockB.signalResult?.action || 'HOLD'})
+
+Which stock is technically stronger right now and why? 
+Provide a clear 3-bullet comparison in simple Hinglish. Mention scores for both stocks.
+End with: ⚠️ Technical analysis only, not SEBI registered investment advice.`;
+
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${keyToUse}`,
         {
@@ -152,38 +140,29 @@ End with: ⚠️ Technical analysis only, not SEBI registered investment advice.
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.3, maxOutputTokens: 300 },
+            generationConfig: { temperature: 0.4, maxOutputTokens: 512 },
           }),
         }
       );
 
       if (response.ok) {
-        const data    = await response.json();
+        const data = await response.json();
         const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-        // Try to detect winner symbol from response
-        const symA = stockA.symbol.split('.')[0];
-        const symB = stockB.symbol.split('.')[0];
-        const mentionsA = (rawText.match(new RegExp(symA, 'gi')) || []).length;
-        const mentionsB = (rawText.match(new RegExp(symB, 'gi')) || []).length;
-        const winner = mentionsA > mentionsB ? stockA.symbol : mentionsB > mentionsA ? stockB.symbol : null;
+        const winner = scoreA > scoreB + 15 ? stockA.symbol : scoreB > scoreA + 15 ? stockB.symbol : null;
 
         return { isGeminiLive: true, text: rawText, winner };
       }
     } catch (err) {
-      console.warn('Gemini compare failed, using fallback:', err.message);
+      console.warn('AI comparison: service unavailable, using fallback');
     }
   }
 
-  // Fallback: simple rules-based comparison
-  const scoreA = (stockA.rsiVal >= 50 && stockA.rsiVal <= 68 ? 1 : 0) + (stockA.macd.includes('Bullish') ? 1.5 : -1.5);
-  const scoreB = (stockB.rsiVal >= 50 && stockB.rsiVal <= 68 ? 1 : 0) + (stockB.macd.includes('Bullish') ? 1.5 : -1.5);
-  const winner = scoreA > scoreB ? stockA.symbol : scoreB > scoreA ? stockB.symbol : null;
-  const winnerName = winner === stockA.symbol ? stockA.name : stockB.name;
+  // Fallback comparison
+  const winner = scoreA > scoreB + 15 ? stockA.name : scoreB > scoreA + 15 ? stockB.name : 'Too Close';
+  const fallbackText = `${stockA.name} (Score: ${scoreA}%) vs ${stockB.name} (Score: ${scoreB}%).
+${winner !== 'Too Close' ? `${winner} shows stronger technical setup right now.` : 'Both stocks have similar technical strength. Compare your risk appetite.'}
 
-  const text = winner
-    ? `${winnerName} (${winner.split('.')[0]}) appears technically stronger right now based on RSI momentum and MACD signal.\n\nFor short-term traders, ${winnerName} offers better momentum. For long-term investors, both stocks need further fundamental analysis beyond technical indicators.\n\nWatch ${winnerName} this week for a potential continuation.\n\n⚠️ Technical analysis only, not SEBI registered investment advice.`
-    : `Both ${stockA.name} and ${stockB.name} show similar technical strength right now. Neither has a clear advantage based on RSI and MACD alone.\n\nShort-term traders should wait for a clearer signal. Long-term investors should evaluate fundamentals.\n\n⚠️ Technical analysis only, not SEBI registered investment advice.`;
+⚠️ Technical analysis only, not SEBI registered investment advice.`;
 
-  return { isGeminiLive: false, text, winner };
+  return { isGeminiLive: false, text: fallbackText, winner };
 }
