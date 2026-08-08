@@ -1,6 +1,7 @@
 /**
  * fundamentalService.js
- * Fetches Yahoo Finance quoteSummary for fundamental analysis, pillar scoring & 3-Factor entry system
+ * Fetches Yahoo Finance quoteSummary for fundamental analysis & pillar scoring
+ * NO MOCK DATA — Real Live API Only
  */
 import { stripHtml } from '../utils/security';
 import {
@@ -12,37 +13,13 @@ import {
   getDividendScore,
   getLongTermScore
 } from '../utils/fundamentalScoring';
-
-const CORS_PROXIES = [
-  (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-];
-
-async function fetchWithProxy(url, options = {}) {
-  const fetchOpts = { ...options, signal: AbortSignal.timeout(5000) };
-  try {
-    const res = await fetch(url, fetchOpts);
-    if (res.ok) return res.json();
-  } catch (_) {}
-
-  const proxyOpts = { ...options, signal: AbortSignal.timeout(8000) };
-  for (const makeProxy of CORS_PROXIES) {
-    try {
-      const res = await fetch(makeProxy(url), proxyOpts);
-      if (res.ok) {
-        const text = await res.text();
-        return JSON.parse(text);
-      }
-    } catch (_) {}
-  }
-  throw new Error('Fetch failed');
-}
+import { fetchWithProxy, resolveSymbol } from './stockSearchService';
 
 export async function fetchFundamentals(symbolInput) {
-  const rawSym = symbolInput.toUpperCase();
-  const cleanSymbol = rawSym.includes('.') ? rawSym : `${rawSym}.NS`;
+  const symbol = await resolveSymbol(symbolInput);
+  if (!symbol) return null;
 
-  const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${cleanSymbol}?modules=financialData,defaultKeyStatistics,summaryDetail,incomeStatementHistory,balanceSheetHistory,cashflowStatementHistory,earningsTrend,recommendationTrend&_=${Date.now()}`;
+  const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=financialData,defaultKeyStatistics,summaryDetail,incomeStatementHistory,balanceSheetHistory,cashflowStatementHistory,earningsTrend,recommendationTrend&_=${Date.now()}`;
 
   try {
     const data = await fetchWithProxy(url, {
@@ -52,7 +29,8 @@ export async function fetchFundamentals(symbolInput) {
       }
     });
 
-    const result = data?.quoteSummary?.result?.[0] || {};
+    const result = data?.quoteSummary?.result?.[0];
+    if (!result) return null;
 
     const financialData = result.financialData || {};
     const defaultKeyStatistics = result.defaultKeyStatistics || {};
@@ -123,7 +101,7 @@ export async function fetchFundamentals(symbolInput) {
     ];
 
     return {
-      symbol: stripHtml(cleanSymbol),
+      symbol: stripHtml(symbol),
       raw: combinedData,
       valuation,
       growth,
@@ -135,75 +113,7 @@ export async function fetchFundamentals(symbolInput) {
       isLive: true
     };
   } catch (err) {
-    console.warn('Fundamental fetch failed, using fallback calculations');
-    return getFallbackFundamentals(cleanSymbol);
+    console.warn(`Fundamental fetch failed for ${symbol}`);
+    return null;
   }
-}
-
-// Fallback generator if quoteSummary is blocked or empty
-function getFallbackFundamentals(symbol) {
-  const combinedData = {
-    currentPrice: 1500,
-    fiftyTwoWeekHigh: 1850,
-    fiftyTwoWeekLow: 1150,
-    fiftyDayAverage: 1420,
-    twoHundredDayAverage: 1350,
-
-    trailingPE: 22.5,
-    forwardPE: 18.2,
-    priceToBook: 2.8,
-    pegRatio: 1.2,
-    enterpriseToEbitda: 14.5,
-    fiveYearAvgPE: 20.0,
-
-    revenueGrowth: 0.14,
-    earningsGrowth: 0.18,
-    earningsQuarterlyGrowth: 0.12,
-    revenueQuarterlyGrowth: 0.10,
-
-    returnOnEquity: 0.185,
-    returnOnAssets: 0.082,
-    profitMargins: 0.155,
-    operatingMargins: 0.21,
-    grossMargins: 0.42,
-
-    debtToEquity: 35.0,
-    currentRatio: 1.85,
-    quickRatio: 1.25,
-    totalCashPerShare: 42.0,
-    freeCashflow: 12000000000,
-
-    dividendYield: 0.012,
-    dividendRate: 18.0,
-    payoutRatio: 0.30,
-    fiveYearAvgDividendYield: 1.1,
-
-    marketCap: 1500000000000
-  };
-
-  const valuation = getValuationScore(combinedData);
-  const growth = getGrowthScore(combinedData);
-  const health = getHealthScore(combinedData);
-  const profitability = getProfitabilityScore(combinedData);
-  const dividend = getDividendScore(combinedData);
-  const overall = getLongTermScore(valuation, growth, health, profitability, dividend);
-
-  return {
-    symbol,
-    raw: combinedData,
-    valuation,
-    growth,
-    health,
-    profitability,
-    dividend,
-    overall,
-    allInsights: [
-      ...valuation.insights,
-      ...growth.insights,
-      ...health.insights,
-      ...profitability.insights,
-      ...dividend.insights
-    ],
-    isLive: false
-  };
 }

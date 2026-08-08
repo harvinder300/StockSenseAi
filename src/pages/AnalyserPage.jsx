@@ -3,7 +3,8 @@ import { getFullStockAnalysis } from '../services/stockDataService';
 import StockSearchInput from '../components/StockSearchInput';
 import FundamentalDashboard, { FundamentalSkeleton } from '../components/FundamentalDashboard';
 import TechnicalEntrySection from '../components/TechnicalEntrySection';
-import { Sparkles, ArrowUpRight, ArrowDownRight, Wifi, WifiOff, ShieldCheck, Award } from 'lucide-react';
+import { NotFoundState, ErrorStateCard } from '../components/ErrorStateCard';
+import { Sparkles, ArrowUpRight, ArrowDownRight, Wifi, Award } from 'lucide-react';
 
 const QUICK_PICKS = ['RELIANCE.NS','TCS.NS','HDFCBANK.NS','INFY.NS','TATAMOTORS.NS','BHARTIARTL.NS','ITC.NS','LT.NS','SBIN.NS','WIPRO.NS'];
 
@@ -20,7 +21,7 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
       const data = await getFullStockAnalysis(sym, geminiApiKey);
       setAnalysis(data);
     } catch (err) {
-      console.error('Analysis: something went wrong');
+      console.error('Analysis error:', err);
     } finally {
       setLoading(false);
     }
@@ -55,7 +56,7 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
         {/* Shared StockSearchInput */}
         <div style={{ maxWidth: 640, margin: '0 auto 20px' }}>
           <StockSearchInput
-            placeholder="Type company name or NSE ticker e.g. Reliance, TCS, HDFC…"
+            placeholder="Type company name or NSE ticker e.g. Reliance, TCS, HDFC, Vadilal…"
             onSelect={handleSelect}
             defaultValue={symbol.replace(/\.(NS|BO)$/i, '')}
           />
@@ -78,6 +79,11 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
       {/* ── Loading Skeleton ── */}
       {loading && <FundamentalSkeleton />}
 
+      {/* ── Error / Not Found State (Real API failed or symbol invalid) ── */}
+      {!loading && !analysis && (
+        <NotFoundState symbol={symbol} onRetry={() => runAnalysis(symbol)} />
+      )}
+
       {/* ── Full Long-Term Analysis ── */}
       {!loading && analysis && (
         <div className="ss-space-y">
@@ -88,10 +94,7 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <span className="ss-stock-banner-sym">{analysis.meta.symbol}</span>
                 <span className="ss-badge ss-badge-blue">{analysis.meta.sector}</span>
-                {analysis.meta.isLive
-                  ? <span className="ss-badge ss-badge-green" style={{ display: 'inline-flex', gap: 5 }}><Wifi size={11} /> Live Fundamentals</span>
-                  : <span className="ss-badge ss-badge-amber" style={{ display: 'inline-flex', gap: 5 }}><WifiOff size={11} /> Simulated Data</span>
-                }
+                <span className="ss-badge ss-badge-green" style={{ display: 'inline-flex', gap: 5 }}><Wifi size={11} /> Real Live Data</span>
                 {analysis.aiAnalysis.isGeminiLive && (
                   <span className="ss-badge ss-badge-blue" style={{ display: 'inline-flex', gap: 5 }}><Sparkles size={11} /> Gemini Long-Term AI</span>
                 )}

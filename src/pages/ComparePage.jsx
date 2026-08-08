@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import StockSearchInput from '../components/StockSearchInput';
 import { getFullStockAnalysis } from '../services/stockDataService';
 import { compareStocksWithGemini } from '../services/geminiService';
+import { NotFoundState } from '../components/ErrorStateCard';
 import { Scale, Trophy, TrendingUp, BarChart2, ArrowUpRight, ArrowDownRight, Wifi, WifiOff, Award, CheckCircle2, Target } from 'lucide-react';
 
 /* ─── Individual Fundamental stock card ─────────────────────────────── */
@@ -55,10 +56,7 @@ function StockResultCard({ data, isWinner }) {
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
             <span className="ss-badge ss-badge-blue" style={{ fontSize: 10 }}>{data.meta.sector}</span>
-            {data.meta.isLive
-              ? <span className="ss-badge ss-badge-green" style={{ fontSize: 10, display: 'inline-flex', gap: 4 }}><Wifi size={9} /> Live</span>
-              : <span className="ss-badge ss-badge-amber" style={{ fontSize: 10, display: 'inline-flex', gap: 4 }}><WifiOff size={9} /> Sim</span>
-            }
+            <span className="ss-badge ss-badge-green" style={{ fontSize: 10, display: 'inline-flex', gap: 4 }}><Wifi size={9} /> Real Live</span>
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -159,6 +157,8 @@ export default function ComparePage({ geminiApiKey }) {
   const [stockB, setStockB] = useState(null);
   const [nameA, setNameA] = useState('');
   const [nameB, setNameB] = useState('');
+  const [failedA, setFailedA] = useState(false);
+  const [failedB, setFailedB] = useState(false);
   const [loadingA, setLoadingA] = useState(false);
   const [loadingB, setLoadingB] = useState(false);
   const [verdict, setVerdict] = useState(null);
@@ -198,24 +198,34 @@ export default function ComparePage({ geminiApiKey }) {
   const handleSelectA = useCallback(async (sym, name) => {
     setNameA(name || sym.split('.')[0]);
     setStockA(null);
+    setFailedA(false);
     setVerdict(null);
     setLoadingA(true);
     try {
       const data = await getFullStockAnalysis(sym, geminiApiKey);
-      setStockA(data);
-      setStockB(prev => { if (prev) runComparison(data, prev); return prev; });
+      if (data) {
+        setStockA(data);
+        setStockB(prev => { if (prev) runComparison(data, prev); return prev; });
+      } else {
+        setFailedA(true);
+      }
     } finally { setLoadingA(false); }
   }, [geminiApiKey, runComparison]);
 
   const handleSelectB = useCallback(async (sym, name) => {
     setNameB(name || sym.split('.')[0]);
     setStockB(null);
+    setFailedB(false);
     setVerdict(null);
     setLoadingB(true);
     try {
       const data = await getFullStockAnalysis(sym, geminiApiKey);
-      setStockB(data);
-      setStockA(prev => { if (prev) runComparison(prev, data); return prev; });
+      if (data) {
+        setStockB(data);
+        setStockA(prev => { if (prev) runComparison(prev, data); return prev; });
+      } else {
+        setFailedB(true);
+      }
     } finally { setLoadingB(false); }
   }, [geminiApiKey, runComparison]);
 
@@ -286,7 +296,7 @@ export default function ComparePage({ geminiApiKey }) {
       )}
 
       {/* ── Prompt to start ── */}
-      {!stockA && !stockB && !loadingA && !loadingB && (
+      {!stockA && !stockB && !loadingA && !loadingB && !failedA && !failedB && (
         <div className="ss-card" style={{ padding: 48, textAlign: 'center' }}>
           <div style={{ width: 56, height: 56, borderRadius: 16, background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
             <Scale size={26} color="#00d4ff" />
@@ -341,12 +351,14 @@ export default function ComparePage({ geminiApiKey }) {
       )}
 
       {/* ── Side-by-side stock cards ── */}
-      {(stockA || stockB) && !loadingA && !loadingB && (
+      {(stockA || stockB || failedA || failedB) && !loadingA && !loadingB && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
           {/* Stock A */}
           <div>
             {stockA ? (
               <StockResultCard data={stockA} isWinner={isWinnerA} />
+            ) : failedA ? (
+              <NotFoundState symbol={nameA} onRetry={() => handleSelectA(nameA)} />
             ) : (
               <div className="ss-card" style={{ padding: 32, textAlign: 'center', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                 <TrendingUp size={28} color="#4a5568" />
@@ -359,6 +371,8 @@ export default function ComparePage({ geminiApiKey }) {
           <div>
             {stockB ? (
               <StockResultCard data={stockB} isWinner={isWinnerB} />
+            ) : failedB ? (
+              <NotFoundState symbol={nameB} onRetry={() => handleSelectB(nameB)} />
             ) : (
               <div className="ss-card" style={{ padding: 32, textAlign: 'center', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                 <BarChart2 size={28} color="#4a5568" />

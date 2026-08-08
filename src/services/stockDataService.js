@@ -1,75 +1,36 @@
 /**
  * stockDataService.js
  * Unified pipeline: Yahoo OHLCV + Fundamentals + 3-Factor Entry Scoring → Gemini AI
+ * NO MOCK DATA — Real Live API Only
  */
 import { POPULAR_STOCKS } from '../data/indianStocks';
 import { calculateRSI, calculateMACD, detectPatterns, calculateConfidenceScore } from './technicalIndicators';
 import { analyzeFundamentalWithGemini } from './geminiService';
-import { fetchYahooOHLCV } from './stockSearchService';
+import { fetchYahooOHLCV, resolveSymbol } from './stockSearchService';
 import { fetchMultiTimeframeData } from './multiTimeframeService';
 import { fetchFundamentals } from './fundamentalService';
 import { calculateSignal } from '../utils/signals';
 import { calculateEntryPoint } from '../utils/entryScoring';
 
-// ── Seeded simulation fallback ────────────────────────────────
-function generateSimulatedCandles(symbol) {
-  const stockMeta = POPULAR_STOCKS.find(s => s.symbol.toUpperCase() === symbol.toUpperCase());
-  let basePrice = stockMeta?.price || 1500;
-
-  let seed = 0;
-  for (const ch of symbol) seed += ch.charCodeAt(0);
-  const rng = () => { const x = Math.sin(seed++) * 10000; return x - Math.floor(x); };
-
-  const candles = [];
-  const today   = new Date();
-  const start   = new Date(); start.setDate(today.getDate() - 120);
-  const vol     = basePrice * 0.015;
-  let price     = basePrice * 0.85;
-  const cursor  = new Date(start);
-
-  while (cursor <= today) {
-    const dow = cursor.getDay();
-    if (dow !== 0 && dow !== 6) {
-      const delta = (rng() - 0.47) * vol;
-      const open  = +price.toFixed(2);
-      const close = +(price + delta).toFixed(2);
-      const high  = +(Math.max(open, close) + rng() * vol * 0.8).toFixed(2);
-      const low   = +(Math.min(open, close) - rng() * vol * 0.8).toFixed(2);
-      candles.push({ time: cursor.toISOString().split('T')[0], open, high, low, close, volume: Math.floor(500000 + rng() * 2000000) });
-      price = close;
-    }
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  if (stockMeta && candles.length) {
-    const last = candles[candles.length - 1];
-    last.close = stockMeta.price;
-    last.high  = Math.max(last.high, stockMeta.price);
-    last.low   = Math.min(last.low,  stockMeta.price);
-  }
-  return candles;
-}
-
 // ── Main pipeline ─────────────────────────────────────────────
 export async function getFullStockAnalysis(symbolInput, geminiApiKey = null) {
-  const symbol = symbolInput.toUpperCase();
-  const fullSymbol = symbol.includes('.') ? symbol : `${symbol}.NS`;
+  const symbol = await resolveSymbol(symbolInput);
+  if (!symbol) return null;
 
-  // Step 1: Run Yahoo Daily OHLCV + Multi-Timeframe + Fundamentals in parallel
+  // Step 1: Fetch Yahoo Daily OHLCV + Multi-Timeframe + Fundamentals in parallel
   const [yahooResult, multiData, fundamentals] = await Promise.all([
-    fetchYahooOHLCV(fullSymbol),
-    fetchMultiTimeframeData(fullSymbol),
-    fetchFundamentals(fullSymbol)
+    fetchYahooOHLCV(symbol),
+    fetchMultiTimeframeData(symbol),
+    fetchFundamentals(symbol)
   ]);
 
-  let candles, metaFromYahoo;
-  if (yahooResult && yahooResult.candles.length >= 20) {
-    candles       = yahooResult.candles;
-    metaFromYahoo = yahooResult.meta;
-  } else {
-    candles       = generateSimulatedCandles(symbol);
-    metaFromYahoo = null;
+  // FIX 1: If real OHLCV data is missing or empty, return null — NO FAKE CANDLES GENERATION!
+  if (!yahooResult || !yahooResult.candles || yahooResult.candles.length === 0) {
+    return null;
   }
+
+  const candles = yahooResult.candles;
+  const metaFromYahoo = yahooResult.meta || {};
 
   // Step 2: Technical indicators
   const closes = candles.map(c => c.close);
@@ -91,16 +52,20 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null) {
   const avgVol = candles.slice(-volPeriod).reduce((sum, c) => sum + c.volume, 0) / volPeriod;
   const volumeRatio = avgVol > 0 ? +(lastCandle.volume / avgVol).toFixed(2) : 1.0;
 
-  // Combine raw fundamental data for entry calculation
+  // FIX 3: Entry Point calculation using REAL API data points
   const rawFund = fundamentals?.raw || {};
+
+  const high52Candles = Math.max(...candles.map(c => c.high));
+  const low52Candles = Math.min(...candles.map(c => c.low));
+
   const entryData = {
-    currentPrice: rawFund.currentPrice || lastPrice,
-    fiftyTwoWeekHigh: rawFund.fiftyTwoWeekHigh || Math.max(...candles.map(c => c.high)),
-    fiftyTwoWeekLow: rawFund.fiftyTwoWeekLow || Math.min(...candles.map(c => c.low)),
+    currentPrice: rawFund.currentPrice || metaFromYahoo.price || lastPrice,
+    fiftyTwoWeekHigh: rawFund.fiftyTwoWeekHigh || high52Candles,
+    fiftyTwoWeekLow: rawFund.fiftyTwoWeekLow || low52Candles,
     fiftyDayAverage: rawFund.fiftyDayAverage || ma50,
     twoHundredDayAverage: rawFund.twoHundredDayAverage || (ma200 > 0 ? ma200 : ma50 * 0.95),
-    trailingPE: rawFund.trailingPE,
-    forwardPE: rawFund.forwardPE,
+    trailingPE: rawFund.trailingPE || null,
+    forwardPE: rawFund.forwardPE || null,
   };
 
   // 3-FACTOR ENTRY POINT SYSTEM CALCULATION
@@ -117,25 +82,25 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null) {
     volumeRatio
   });
 
-  // Step 3: Meta info
+  // Meta info
   const localMeta = POPULAR_STOCKS.find(s => s.symbol.toUpperCase() === symbol.split('.')[0]);
   const prevClose = closes[closes.length - 2] || lastPrice;
 
   const meta = {
     symbol:   symbol.split('.')[0],
-    name:     metaFromYahoo?.name || localMeta?.name || `${symbol.split('.')[0]} Ltd.`,
-    sector:   localMeta?.sector  || metaFromYahoo?.exchange || 'NSE Equities',
-    price:    metaFromYahoo?.price   ?? +lastPrice.toFixed(2),
-    change:   metaFromYahoo?.change  ?? +(lastPrice - prevClose).toFixed(2),
-    pChange:  metaFromYahoo?.pChange ?? +(((lastPrice - prevClose) / prevClose) * 100).toFixed(2),
-    currency: metaFromYahoo?.currency || 'INR',
-    isLive:   !!metaFromYahoo,
+    name:     metaFromYahoo.name || localMeta?.name || `${symbol.split('.')[0]} Ltd.`,
+    sector:   localMeta?.sector  || metaFromYahoo.exchange || 'NSE Equities',
+    price:    metaFromYahoo.price   ?? +lastPrice.toFixed(2),
+    change:   metaFromYahoo.change  ?? +(lastPrice - prevClose).toFixed(2),
+    pChange:  metaFromYahoo.pChange ?? +(((lastPrice - prevClose) / prevClose) * 100).toFixed(2),
+    currency: metaFromYahoo.currency || 'INR',
+    isLive:   true,
     ma50:     +ma50.toFixed(2),
     ma200:    +ma200.toFixed(2),
     volumeRatio
   };
 
-  // Step 4: Long Term Gemini AI Analysis with Entry Point Analysis
+  // Step 3: Gemini AI Analysis
   const aiAnalysis = await analyzeFundamentalWithGemini({
     symbol: meta.symbol,
     name: meta.name,
