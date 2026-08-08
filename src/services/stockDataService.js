@@ -1,12 +1,13 @@
 /**
  * stockDataService.js
- * Unified pipeline: Yahoo OHLCV → Real Indicators → calculateSignal → Gemini AI
+ * Unified pipeline: Yahoo OHLCV + Fundamentals → Scoring → Gemini AI
  */
 import { POPULAR_STOCKS } from '../data/indianStocks';
 import { calculateRSI, calculateMACD, detectPatterns, calculateConfidenceScore } from './technicalIndicators';
-import { analyzeStockWithGemini } from './geminiService';
+import { analyzeFundamentalWithGemini } from './geminiService';
 import { fetchYahooOHLCV } from './stockSearchService';
 import { fetchMultiTimeframeData } from './multiTimeframeService';
+import { fetchFundamentals } from './fundamentalService';
 import { calculateSignal } from '../utils/signals';
 
 // ── Seeded simulation fallback ────────────────────────────────
@@ -39,7 +40,6 @@ function generateSimulatedCandles(symbol) {
     cursor.setDate(cursor.getDate() + 1);
   }
 
-  // Pin last close to real known price
   if (stockMeta && candles.length) {
     const last = candles[candles.length - 1];
     last.close = stockMeta.price;
@@ -54,10 +54,11 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null) {
   const symbol = symbolInput.toUpperCase();
   const fullSymbol = symbol.includes('.') ? symbol : `${symbol}.NS`;
 
-  // Step 1: Run Yahoo Daily OHLCV + Multi-Timeframe fetch in parallel
-  const [yahooResult, multiData] = await Promise.all([
+  // Step 1: Run Yahoo Daily OHLCV + Multi-Timeframe + Fundamentals in parallel
+  const [yahooResult, multiData, fundamentals] = await Promise.all([
     fetchYahooOHLCV(fullSymbol),
-    fetchMultiTimeframeData(fullSymbol)
+    fetchMultiTimeframeData(fullSymbol),
+    fetchFundamentals(fullSymbol)
   ]);
 
   let candles, metaFromYahoo;
@@ -65,12 +66,11 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null) {
     candles       = yahooResult.candles;
     metaFromYahoo = yahooResult.meta;
   } else {
-    // Fallback to simulation
     candles       = generateSimulatedCandles(symbol);
     metaFromYahoo = null;
   }
 
-  // Step 2: Calculate real indicators from closes
+  // Step 2: Technical indicators
   const closes = candles.map(c => c.close);
   const lastCandle = candles[candles.length - 1];
   const lastPrice = lastCandle.close;
@@ -80,7 +80,6 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null) {
   const detectedPatterns = detectPatterns(candles);
   const confidence       = calculateConfidenceScore(candles, rsi, macd, detectedPatterns[0] || {});
 
-  // Calculate Moving Averages and Volume Ratio for calculateSignal()
   const ma50Count = Math.min(50, candles.length);
   const ma50 = closes.slice(-ma50Count).reduce((sum, v) => sum + v, 0) / ma50Count;
 
@@ -91,7 +90,6 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null) {
   const avgVol = candles.slice(-volPeriod).reduce((sum, c) => sum + c.volume, 0) / volPeriod;
   const volumeRatio = avgVol > 0 ? +(lastCandle.volume / avgVol).toFixed(2) : 1.0;
 
-  // FIX 2: Weighted Signal Calculation
   const signalResult = calculateSignal({
     rsi: rsi.value,
     macdHistogram: macd.histogram,
@@ -103,9 +101,25 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null) {
     volumeRatio
   });
 
-  // Step 3: Build meta from Yahoo or local DB fallback
+  // Technical Entry Timing Signals for Long-Term Investors
+  let technicalEntrySignal = 'Wait for Better Entry ⏳';
+  let technicalEntryColor = '#ffd700';
+
+  if (rsi.value < 35) {
+    technicalEntrySignal = 'Excellent Dip — Strong Entry 💪';
+    technicalEntryColor = '#00ff88';
+  } else if (rsi.value < 48 || (rsi.value <= 55 && fundamentals.overall.total >= 65)) {
+    technicalEntrySignal = 'Good Entry Point Now ✅';
+    technicalEntryColor = '#00d4ff';
+  }
+
+  // Support level (lowest low of last 50 candles or 90% of lastPrice)
+  const lowest50 = Math.min(...candles.slice(-50).map(c => c.low));
+  const supportLevel = isFinite(lowest50) ? +lowest50.toFixed(2) : +(lastPrice * 0.9).toFixed(2);
+
+  // Step 3: Meta info
   const localMeta = POPULAR_STOCKS.find(s => s.symbol.toUpperCase() === symbol.split('.')[0]);
-  const prevClose = closes[closes.length - 2] || lastClose;
+  const prevClose = closes[closes.length - 2] || lastPrice;
 
   const meta = {
     symbol:   symbol.split('.')[0],
@@ -121,20 +135,14 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null) {
     volumeRatio
   };
 
-  // Step 4: Gemini AI analysis with Weighted Signal & Multi-Timeframe Data
-  const aiAnalysis = await analyzeStockWithGemini({
-    symbol:          meta.symbol,
-    name:            meta.name,
-    price:           meta.price,
-    change:          meta.change,
-    pChange:         meta.pChange,
-    rsi,
-    macd,
-    detectedPatterns,
-    confidence,
-    signalResult,
-    multiData,
-    geminiApiKey,
+  // Step 4: Long Term Gemini AI Analysis
+  const aiAnalysis = await analyzeFundamentalWithGemini({
+    symbol: meta.symbol,
+    name: meta.name,
+    sector: meta.sector,
+    price: meta.price,
+    fundamentals,
+    geminiApiKey
   });
 
   return {
@@ -145,6 +153,10 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null) {
     detectedPatterns,
     confidence,
     signalResult,
+    technicalEntrySignal,
+    technicalEntryColor,
+    supportLevel,
+    fundamentals,
     aiAnalysis,
     multiData
   };

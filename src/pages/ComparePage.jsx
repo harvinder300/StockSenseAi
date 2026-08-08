@@ -1,15 +1,20 @@
 import React, { useState, useCallback } from 'react';
 import StockSearchInput from '../components/StockSearchInput';
-import ConfidenceMeter from '../components/ConfidenceMeter';
 import { getFullStockAnalysis } from '../services/stockDataService';
 import { compareStocksWithGemini } from '../services/geminiService';
-import { getCompareVerdict } from '../utils/signals';
-import { Scale, Trophy, Sparkles, TrendingUp, BarChart2, ArrowUpRight, ArrowDownRight, Wifi, WifiOff } from 'lucide-react';
+import { Scale, Trophy, Sparkles, TrendingUp, BarChart2, ArrowUpRight, ArrowDownRight, Wifi, WifiOff, Award, CheckCircle2 } from 'lucide-react';
 
-/* ─── Individual stock card ─────────────────────────────── */
+/* ─── Individual Fundamental stock card ─────────────────────────────── */
 function StockResultCard({ data, isWinner }) {
   const pctColor = data.meta.pChange >= 0 ? '#00ff88' : '#ff4757';
-  const signalRes = data.signalResult || {};
+  const overall = data.fundamentals?.overall || { total: 50, verdict: 'Average', color: '#ffd700', emoji: '⚖️' };
+  const pillars = [
+    { name: 'Valuation', score: data.fundamentals?.valuation?.score || 0, color: '#00d4ff' },
+    { name: 'Growth', score: data.fundamentals?.growth?.score || 0, color: '#00ff88' },
+    { name: 'Financial Health', score: data.fundamentals?.health?.score || 0, color: '#a78bfa' },
+    { name: 'Profitability', score: data.fundamentals?.profitability?.score || 0, color: '#ffd700' },
+    { name: 'Dividend', score: data.fundamentals?.dividend?.score || 0, color: '#ff9f43' },
+  ];
 
   return (
     <div style={{
@@ -30,9 +35,9 @@ function StockResultCard({ data, isWinner }) {
       {/* Winner badge */}
       {isWinner && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-          <Trophy size={13} color="#ffd700" />
+          <Trophy size={14} color="#ffd700" />
           <span style={{ fontSize: 11, fontWeight: 800, color: '#ffd700', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-            AI Pick
+            Winner — Higher Fundamental Score
           </span>
         </div>
       )}
@@ -65,54 +70,47 @@ function StockResultCard({ data, isWinner }) {
         </div>
       </div>
 
-      {/* AI Signal Score Badge */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 'var(--radius)', padding: '11px 14px', marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, color: '#8892a4' }}>
-          <Sparkles size={13} color="#00d4ff" />
-          Signal Score: <strong style={{ color: '#fff', fontSize: 14 }}>{signalRes.score || 50}/100</strong>
+      {/* Long Term Score Box */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: `${overall.color}12`, border: `1px solid ${overall.color}35`, borderRadius: 'var(--radius)', padding: '14px 16px', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase' }}>Long-Term Score</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: overall.color, marginTop: 2 }}>
+            {overall.emoji} {overall.verdict}
+          </div>
         </div>
-        <span style={{
-          background: `${signalRes.color || '#00d4ff'}20`,
-          color: signalRes.color || '#00d4ff',
-          border: `1px solid ${signalRes.color || '#00d4ff'}40`,
-          fontWeight: 900,
-          padding: '5px 14px',
-          borderRadius: 99,
-          fontSize: 12,
-          textTransform: 'uppercase',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4
-        }}>
-          {signalRes.emoji} {signalRes.action || data.aiAnalysis.signal}
-        </span>
+        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 28, fontWeight: 900, color: overall.color }}>
+          {overall.total}<span style={{ fontSize: 16, color: '#8892a4' }}>/100</span>
+        </div>
       </div>
 
-      {/* Metrics grid */}
-      {[
-        { label: 'RSI (14)',          val: `${data.rsi.value}  —  ${data.rsi.status}`,  highlight: data.rsi.value >= 70 ? '#ff4757' : data.rsi.value <= 30 ? '#00ff88' : '#00d4ff' },
-        { label: 'MACD',              val: data.macd.status,                              highlight: data.macd.histogram >= 0 ? '#00ff88' : '#ff4757' },
-        { label: 'Pattern Detected',  val: data.detectedPatterns[0]?.name || '—',        highlight: null },
-        { label: 'Overall Verdict',   val: signalRes.verdict || data.aiAnalysis.verdict,  highlight: signalRes.color || '#00d4ff' },
-      ].map(({ label, val, highlight }) => (
-        <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 12px', borderRadius: 9, background: 'rgba(255,255,255,0.02)', marginBottom: 7 }}>
-          <span style={{ fontSize: 12, color: '#8892a4', fontWeight: 600 }}>{label}</span>
-          <span style={{ fontSize: 12, fontWeight: 800, fontFamily: 'JetBrains Mono,monospace', color: highlight || '#c8d0e0' }}>{val}</span>
-        </div>
-      ))}
+      {/* 5 Pillars Breakdown */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase' }}>5 Pillars Breakdown:</div>
+        {pillars.map((p) => (
+          <div key={p.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.02)', padding: '8px 12px', borderRadius: 8 }}>
+            <span style={{ fontSize: 12, color: '#c8d0e0', fontWeight: 600 }}>{p.name}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 60, height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{ width: `${(p.score / 20) * 100}%`, height: '100%', background: p.color }} />
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', color: p.color }}>{p.score}/20</span>
+            </div>
+          </div>
+        ))}
+      </div>
 
-      {/* Signal Reasons */}
-      {signalRes.reasons && signalRes.reasons.length > 0 && (
-        <div style={{ marginTop: 12, padding: '10px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', marginBottom: 6 }}>Key Signals:</div>
-          {signalRes.reasons.slice(0, 3).map((r, idx) => (
-            <div key={idx} style={{ fontSize: 11, color: '#c8d0e0', marginBottom: 3 }}>{r}</div>
+      {/* Top Insights */}
+      {data.fundamentals?.allInsights && (
+        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', marginBottom: 6 }}>Key Fundamental Insights:</div>
+          {data.fundamentals.allInsights.slice(0, 3).map((insight, idx) => (
+            <div key={idx} style={{ fontSize: 11, color: '#c8d0e0', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <CheckCircle2 size={12} color="#00d4ff" style={{ flexShrink: 0 }} />
+              <span>{insight.replace(/^(✅|⚠️|🔴|ℹ️)\s*/, '')}</span>
+            </div>
           ))}
         </div>
       )}
-
-      {/* Confidence Score Widget */}
-      <ConfidenceMeter confidence={data.confidence} />
     </div>
   );
 }
@@ -159,29 +157,18 @@ export default function ComparePage({ geminiApiKey }) {
           symbol: a.meta.symbol,
           name: a.meta.name,
           price: a.meta.price,
-          signalResult: a.signalResult,
-          confidence: a.confidence,
+          fundamentals: a.fundamentals,
         },
         stockB: {
           symbol: b.meta.symbol,
           name: b.meta.name,
           price: b.meta.price,
-          signalResult: b.signalResult,
-          confidence: b.confidence,
+          fundamentals: b.fundamentals,
         },
         geminiApiKey,
       });
 
-      // Synchronize mathematical compare verdict
-      const mathVerdict = getCompareVerdict(
-        { score: a.signalResult?.score ?? 50, name: a.meta.name, symbol: a.meta.symbol },
-        { score: b.signalResult?.score ?? 50, name: b.meta.name, symbol: b.meta.symbol }
-      );
-
-      setVerdict({
-        ...result,
-        mathVerdict,
-      });
+      setVerdict(result);
     } catch (err) {
       console.error('Comparison: something went wrong');
     } finally {
@@ -214,26 +201,30 @@ export default function ComparePage({ geminiApiKey }) {
   }, [geminiApiKey, runComparison]);
 
   const bothLoaded = Boolean(stockA && stockB);
-  const mathVerdict = verdict?.mathVerdict || (bothLoaded ? getCompareVerdict(
-    { score: stockA.signalResult?.score ?? 50, name: stockA.meta.name, symbol: stockA.meta.symbol },
-    { score: stockB.signalResult?.score ?? 50, name: stockB.meta.name, symbol: stockB.meta.symbol }
-  ) : null);
 
-  const isWinnerA = mathVerdict?.winner === stockA?.meta.name || mathVerdict?.winner === stockA?.meta.symbol || verdict?.winner === stockA?.meta.symbol;
-  const isWinnerB = mathVerdict?.winner === stockB?.meta.name || mathVerdict?.winner === stockB?.meta.symbol || verdict?.winner === stockB?.meta.symbol;
+  const scoreA = stockA?.fundamentals?.overall?.total ?? 0;
+  const scoreB = stockB?.fundamentals?.overall?.total ?? 0;
+
+  const winnerName = scoreA > scoreB + 5 ? stockA?.meta.name : scoreB > scoreA + 5 ? stockB?.meta.name : 'Tie / Similar Quality';
+  const isWinnerA = scoreA > scoreB + 5;
+  const isWinnerB = scoreB > scoreA + 5;
 
   return (
     <div className="fade-up">
 
       {/* ── Page Header + Search Card ── */}
       <div className="ss-card" style={{ padding: 32, marginBottom: 24 }}>
-        <h1 style={{ fontFamily: 'Poppins,sans-serif', fontSize: 28, fontWeight: 900, color: '#fff', textAlign: 'center', marginBottom: 6 }}>
-          Compare 2 <span style={{ color: '#00d4ff' }}>NSE / BSE Stocks</span>
-        </h1>
-        <p style={{ fontSize: 14, color: '#8892a4', textAlign: 'center', maxWidth: 520, margin: '0 auto 28px' }}>
-          Search any two stocks live — get RSI, MACD, weighted signal scores side-by-side,
-          and an AI verdict on which is technically stronger right now.
-        </p>
+        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(0,212,255,0.1)', color: '#00d4ff', padding: '4px 14px', borderRadius: 99, fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+            <Award size={14} /> Fundamental Comparison
+          </div>
+          <h1 style={{ fontFamily: 'Poppins,sans-serif', fontSize: 28, fontWeight: 900, color: '#fff', marginBottom: 6 }}>
+            Compare 2 <span style={{ color: '#00d4ff' }}>Long-Term Stocks</span>
+          </h1>
+          <p style={{ fontSize: 14, color: '#8892a4', maxWidth: 540, margin: '0 auto' }}>
+            Compare Valuation, Growth, Health, Profitability &amp; Dividend scores side-by-side to find the best long-term investment.
+          </p>
+        </div>
 
         {/* Two Search Bars */}
         <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
@@ -267,7 +258,7 @@ export default function ComparePage({ geminiApiKey }) {
         <div className="ss-loading" style={{ marginBottom: 20 }}>
           <div className="ss-spinner" />
           <div className="ss-loading-text">
-            {loadingA && loadingB ? 'Fetching both stocks…' : loadingA ? `Analyzing ${nameA}…` : `Analyzing ${nameB}…`}
+            {loadingA && loadingB ? 'Fetching fundamentals for both stocks…' : loadingA ? `Analyzing ${nameA}…` : `Analyzing ${nameB}…`}
           </div>
         </div>
       )}
@@ -279,23 +270,23 @@ export default function ComparePage({ geminiApiKey }) {
             <Scale size={26} color="#00d4ff" />
           </div>
           <p style={{ fontSize: 15, fontWeight: 700, color: '#8892a4' }}>
-            Search and select two stocks above to start the comparison
+            Search and select two stocks above to compare 5-pillar fundamentals
           </p>
           <p style={{ fontSize: 13, color: '#4a5568', marginTop: 6 }}>
-            Live Yahoo Finance data · Weighted Signal Scoring · Gemini AI verdict
+            Valuation · Growth · Financial Health · Profitability · Dividend Yield
           </p>
         </div>
       )}
 
-      {/* ── AI & Mathematical Verdict Card ── */}
+      {/* ── AI & Fundamental Verdict Card ── */}
       {bothLoaded && (
         <div style={{
-          background:   mathVerdict?.winner !== 'Too Close' ? 'rgba(255,215,0,0.03)' : 'var(--bg-card)',
-          border:       `2px solid ${mathVerdict?.winner !== 'Too Close' ? 'rgba(255,215,0,0.4)' : 'rgba(255,255,255,0.07)'}`,
+          background:   winnerName !== 'Tie / Similar Quality' ? 'rgba(255,215,0,0.03)' : 'var(--bg-card)',
+          border:       `2px solid ${winnerName !== 'Tie / Similar Quality' ? 'rgba(255,215,0,0.4)' : 'rgba(255,255,255,0.07)'}`,
           borderRadius: 'var(--radius-lg)',
           padding:      28,
           marginBottom: 24,
-          boxShadow:    mathVerdict?.winner !== 'Too Close' ? '0 0 40px rgba(255,215,0,0.07)' : 'var(--shadow-card)',
+          boxShadow:    winnerName !== 'Tie / Similar Quality' ? '0 0 40px rgba(255,215,0,0.07)' : 'var(--shadow-card)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18, paddingBottom: 18, borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <div style={{ width: 44, height: 44, borderRadius: 13, background: 'rgba(255,215,0,0.1)', border: '1px solid rgba(255,215,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -303,27 +294,18 @@ export default function ComparePage({ geminiApiKey }) {
             </div>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>
-                {verdict?.isGeminiLive ? '✦ Gemini AI & Technical Comparison' : '✦ Technical Comparison Verdict'}
+                {verdict?.isGeminiLive ? '✦ Gemini Long-Term AI Comparison' : '✦ Fundamental Comparison Verdict'}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <span style={{ fontFamily: 'Poppins,sans-serif', fontSize: 15, fontWeight: 800, color: '#fff' }}>
-                  Stronger Stock:
+                  Better Long-Term Pick:
                 </span>
                 <span style={{ background: 'rgba(255,215,0,0.15)', color: '#ffd700', border: '1px solid rgba(255,215,0,0.35)', padding: '4px 16px', borderRadius: 99, fontFamily: 'Poppins,sans-serif', fontWeight: 900, fontSize: 14 }}>
-                  {mathVerdict?.winner}
+                  {winnerName} ({scoreA} vs {scoreB})
                 </span>
               </div>
             </div>
           </div>
-
-          {/* Math Reason */}
-          {mathVerdict?.reason && (
-            <div style={{ background: 'rgba(0,212,255,0.05)', border: '1px solid rgba(0,212,255,0.2)', borderRadius: 'var(--radius)', padding: '14px 16px', marginBottom: 16 }}>
-              <p style={{ fontSize: 13, color: '#00d4ff', fontWeight: 600, margin: 0 }}>
-                {mathVerdict.reason}
-              </p>
-            </div>
-          )}
 
           {/* Gemini text */}
           {!verdictLoading && verdict?.text && (

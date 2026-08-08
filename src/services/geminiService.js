@@ -1,65 +1,75 @@
 /**
  * geminiService.js
- * Google Gemini API integration with weighted scoring & Hinglish analysis
+ * Google Gemini API integration for Long Term Fundamental Analysis & Comparison
  */
 
 const DEFAULT_KEY = '';
 const GEMINI_MODEL = 'gemini-1.5-flash';
 
-export async function analyzeStockWithGemini({
+export async function analyzeFundamentalWithGemini({
   symbol,
   name,
+  sector = 'Indian Market',
   price,
-  change,
-  pChange,
-  rsi,
-  macd,
-  detectedPatterns,
-  confidence,
-  signalResult = null,
-  multiData = null,
+  fundamentals,
   geminiApiKey = null,
 }) {
-  const primaryPattern = detectedPatterns[0] || { name: 'No Pattern Detected', type: 'Neutral', simpleLanguage: 'Consolidating.' };
   const keyToUse = (geminiApiKey && geminiApiKey.trim().length > 10) ? geminiApiKey.trim() : DEFAULT_KEY;
 
-  const score = signalResult?.score ?? confidence?.score ?? 50;
-  const verdict = signalResult?.verdict ?? 'Neutral';
-  const action = signalResult?.action ?? 'HOLD';
-  const reasons = signalResult?.reasons || [
-    `RSI is ${rsi.value} (${rsi.status})`,
-    `MACD signal is ${macd.status}`
-  ];
+  const valuation = fundamentals?.valuation || { score: 10 };
+  const growth = fundamentals?.growth || { score: 10 };
+  const health = fundamentals?.health || { score: 10 };
+  const profit = fundamentals?.profitability || { score: 10 };
+  const dividend = fundamentals?.dividend || { score: 10 };
+  const overall = fundamentals?.overall || { total: 50, verdict: 'Average' };
+  const raw = fundamentals?.raw || {};
 
-  const priceVsMa50 = price > (confidence?.dma50 || price) ? 'Above 50 MA' : 'Below 50 MA';
-  const volumeRatio = confidence?.isHighVol ? '1.5+' : '1.0';
+  const pe = raw.trailingPE ? raw.trailingPE.toFixed(1) : 'N/A';
+  const pb = raw.priceToBook ? raw.priceToBook.toFixed(1) : 'N/A';
+  const roe = raw.returnOnEquity ? (raw.returnOnEquity * 100).toFixed(1) : 'N/A';
+  const margin = raw.profitMargins ? (raw.profitMargins * 100).toFixed(1) : 'N/A';
+  const revGrowth = raw.revenueGrowth ? (raw.revenueGrowth * 100).toFixed(1) : 'N/A';
+  const de = raw.debtToEquity ? (raw.debtToEquity > 10 ? raw.debtToEquity / 100 : raw.debtToEquity).toFixed(2) : 'N/A';
+  const divYield = raw.dividendYield ? (raw.dividendYield * 100).toFixed(1) : '0.0';
+
+  const allInsights = fundamentals?.allInsights || [];
 
   if (keyToUse) {
     try {
-      const prompt = `You are an expert Indian stock market analyst.
+      const prompt = `You are an expert long term investment advisor for Indian retail investors.
 
 Stock: ${name} (${symbol})
-Price: ₹${price}
-Signal Score: ${score}/100
+Sector: ${sector}
+Current Price: ₹${price}
 
-Indicators:
-RSI: ${rsi.value} (${rsi.status})
-MACD: ${macd.status}
-Price vs MA50: ${priceVsMa50}
-Volume: ${volumeRatio}x average
+FUNDAMENTAL SCORES:
+Valuation: ${valuation.score}/20
+Growth: ${growth.score}/20
+Financial Health: ${health.score}/20
+Profitability: ${profit.score}/20
+Dividend: ${dividend.score}/20
+TOTAL: ${overall.total}/100 — ${overall.verdict}
 
-Signal Breakdown:
-${reasons.join('\n')}
+KEY METRICS:
+P/E: ${pe} | P/B: ${pb}
+ROE: ${roe}% | Net Margin: ${margin}%
+Revenue Growth: ${revGrowth}%
+Debt/Equity: ${de}
+Dividend Yield: ${divYield}%
 
-Overall Verdict: ${verdict}
+KEY INSIGHTS FROM SCORING:
+${allInsights.slice(0, 10).join('\n')}
 
-Write a 3-4 line analysis in simple Hindi-English (Hinglish) explaining:
-1. Kya ho raha hai is stock mein abhi
-2. ${score >= 55 ? 'Kyun yeh accha entry point lag raha hai' : 'Kyun abhi wait karna better hai'}
-3. Kya watch karna chahiye
+Write a 5-6 line analysis in simple Hinglish (Hindi + English mix) covering:
+1. Company ki overall financial health kaisi hai — simple words mein
+2. Kya yeh stock long term ke liye suitable hai aur kyun
+3. Kya risk hai is investment mein
+4. Investment strategy kya honi chahiye — ek baar mein invest karein ya SIP karein
+5. Kaunsa number/metric sabse impressive ya concerning lag raha hai
 
-Score ${score}/100 mention karo.
-End with: ⚠️ Technical analysis only, not SEBI registered investment advice.`;
+Tone: Knowledgeable dost ki tarah baat karo — na bahut technical, na bahut simple.
+Score ${overall.total}/100 zaroor mention karo.
+End with: ⚠️ SEBI registered advisor se salah zaroor lein bade investments se pehle.`;
 
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${keyToUse}`,
@@ -68,7 +78,7 @@ End with: ⚠️ Technical analysis only, not SEBI registered investment advice.
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.4, maxOutputTokens: 512 },
+            generationConfig: { temperature: 0.4, maxOutputTokens: 600 },
           }),
         }
       );
@@ -76,17 +86,11 @@ End with: ⚠️ Technical analysis only, not SEBI registered investment advice.
       if (response.ok) {
         const data = await response.json();
         const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
         return {
           isGeminiLive: true,
-          verdict,
-          signal: action,
-          keyPrice: null,
+          verdict: overall.verdict,
           reason: rawText,
           rawGeminiText: rawText,
-          patternsExplanation: primaryPattern.simpleLanguage,
-          rsiExplanation: rsi.explanation,
-          macdExplanation: macd.explanation,
         };
       } else {
         console.warn('AI analysis: API returned non-OK status');
@@ -96,42 +100,63 @@ End with: ⚠️ Technical analysis only, not SEBI registered investment advice.
     }
   }
 
-  // ── Fallback: Built-in AI rules engine ────────────────────
-  const fallbackText = `Stock: ${name} (${symbol}) - Score ${score}/100.
-${verdict === 'Strong Buy' || verdict === 'Moderate Buy' ? 'Abhi stock mein buying momentum dikh raha hai. Technical indicators positive hain.' : 'Abhi stock me mixed ya weak trend hai. Wait and watch approach better rahegi.'}
-Keep an eye on key support levels before placing orders.
+  // Fallback
+  const fallbackText = `Stock: ${name} (${symbol}) — Overall Long Term Score: ${overall.total}/100 (${overall.verdict}).
+Company ki overall financial health ${overall.total >= 65 ? 'kaafi solid aur healthy lag rahi hai.' : 'average hai, cautious rehna zaroori hai.'}
+P/E: ${pe}, ROE: ${roe}%, Net Margin: ${margin}%, Debt/Equity: ${de}.
+Strategy: ${overall.strategy}. Always diversify across 10-15 stocks.
 
-⚠️ Technical analysis only, not SEBI registered investment advice.`;
+⚠️ SEBI registered advisor se salah zaroor lein bade investments se pehle.`;
 
   return {
     isGeminiLive: false,
-    verdict,
-    signal: action,
-    keyPrice: null,
+    verdict: overall.verdict,
     reason: fallbackText,
     rawGeminiText: fallbackText,
-    patternsExplanation: primaryPattern.simpleLanguage,
-    rsiExplanation: rsi.explanation,
-    macdExplanation: macd.explanation,
   };
 }
 
 export async function compareStocksWithGemini({ stockA, stockB, geminiApiKey = null }) {
   const keyToUse = (geminiApiKey && geminiApiKey.trim().length > 10) ? geminiApiKey.trim() : DEFAULT_KEY;
 
-  const scoreA = stockA.signalResult?.score ?? stockA.confidence?.score ?? 50;
-  const scoreB = stockB.signalResult?.score ?? stockB.confidence?.score ?? 50;
+  const scoreA = stockA.fundamentals?.overall?.total ?? stockA.score ?? 50;
+  const scoreB = stockB.fundamentals?.overall?.total ?? stockB.score ?? 50;
+
+  const nameA = stockA.name || stockA.symbol;
+  const nameB = stockB.name || stockB.symbol;
+
+  const fA = stockA.fundamentals?.raw || {};
+  const fB = stockB.fundamentals?.raw || {};
+
+  const peA = fA.trailingPE ? fA.trailingPE.toFixed(1) : 'N/A';
+  const peB = fB.trailingPE ? fB.trailingPE.toFixed(1) : 'N/A';
+
+  const roeA = fA.returnOnEquity ? (fA.returnOnEquity * 100).toFixed(1) : 'N/A';
+  const roeB = fB.returnOnEquity ? (fB.returnOnEquity * 100).toFixed(1) : 'N/A';
+
+  const deA = fA.debtToEquity ? (fA.debtToEquity > 10 ? fA.debtToEquity / 100 : fA.debtToEquity).toFixed(2) : 'N/A';
+  const deB = fB.debtToEquity ? (fB.debtToEquity > 10 ? fB.debtToEquity / 100 : fB.debtToEquity).toFixed(2) : 'N/A';
 
   if (keyToUse) {
     try {
-      const prompt = `Compare these two Indian stocks for a retail investor:
+      const prompt = `Compare these two stocks for a long term Indian retail investor:
 
-Stock A: ${stockA.name} (${stockA.symbol}) — ₹${stockA.price} (Score: ${scoreA}/100, Action: ${stockA.signalResult?.action || 'HOLD'})
-Stock B: ${stockB.name} (${stockB.symbol}) — ₹${stockB.price} (Score: ${scoreB}/100, Action: ${stockB.signalResult?.action || 'HOLD'})
+Stock A: ${nameA} — Score ${scoreA}/100
+P/E: ${peA} | ROE: ${roeA}% | Debt/Equity: ${deA}
+Valuation: ${stockA.fundamentals?.valuation?.score || 10}/20, Growth: ${stockA.fundamentals?.growth?.score || 10}/20, Health: ${stockA.fundamentals?.health?.score || 10}/20, Profit: ${stockA.fundamentals?.profitability?.score || 10}/20, Div: ${stockA.fundamentals?.dividend?.score || 10}/20
 
-Which stock is technically stronger right now and why? 
-Provide a clear 3-bullet comparison in simple Hinglish. Mention scores for both stocks.
-End with: ⚠️ Technical analysis only, not SEBI registered investment advice.`;
+Stock B: ${nameB} — Score ${scoreB}/100
+P/E: ${peB} | ROE: ${roeB}% | Debt/Equity: ${deB}
+Valuation: ${stockB.fundamentals?.valuation?.score || 10}/20, Growth: ${stockB.fundamentals?.growth?.score || 10}/20, Health: ${stockB.fundamentals?.health?.score || 10}/20, Profit: ${stockB.fundamentals?.profitability?.score || 10}/20, Div: ${stockB.fundamentals?.dividend?.score || 10}/20
+
+Tell in simple Hinglish:
+1. Long term ke liye konsa better hai
+2. Kyun ek doosre se better hai
+3. Dono mein se kaunsa zyada safe hai
+4. Kya dono rakh sakte hain portfolio mein
+
+Under 100 words. Simple language.
+End with: ⚠️ SEBI registered advisor se salah zaroor lein bade investments se pehle.`;
 
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${keyToUse}`,
@@ -148,7 +173,7 @@ End with: ⚠️ Technical analysis only, not SEBI registered investment advice.
       if (response.ok) {
         const data = await response.json();
         const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        const winner = scoreA > scoreB + 15 ? stockA.symbol : scoreB > scoreA + 15 ? stockB.symbol : null;
+        const winner = scoreA > scoreB + 10 ? stockA.symbol : scoreB > scoreA + 10 ? stockB.symbol : null;
 
         return { isGeminiLive: true, text: rawText, winner };
       }
@@ -158,11 +183,11 @@ End with: ⚠️ Technical analysis only, not SEBI registered investment advice.
   }
 
   // Fallback comparison
-  const winner = scoreA > scoreB + 15 ? stockA.name : scoreB > scoreA + 15 ? stockB.name : 'Too Close';
-  const fallbackText = `${stockA.name} (Score: ${scoreA}%) vs ${stockB.name} (Score: ${scoreB}%).
-${winner !== 'Too Close' ? `${winner} shows stronger technical setup right now.` : 'Both stocks have similar technical strength. Compare your risk appetite.'}
+  const winner = scoreA > scoreB + 10 ? nameA : scoreB > scoreA + 10 ? nameB : 'Too Close';
+  const fallbackText = `${nameA} (Score: ${scoreA}/100) vs ${nameB} (Score: ${scoreB}/100).
+${winner !== 'Too Close' ? `${winner} is fundamental-wise stronger for long-term holding right now.` : 'Both stocks have balanced fundamentals. Consider diversification.'}
 
-⚠️ Technical analysis only, not SEBI registered investment advice.`;
+⚠️ SEBI registered advisor se salah zaroor lein bade investments se pehle.`;
 
   return { isGeminiLive: false, text: fallbackText, winner };
 }
