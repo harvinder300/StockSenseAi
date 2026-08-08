@@ -1,6 +1,6 @@
 /**
  * stockDataService.js
- * Unified pipeline: Yahoo OHLCV + Fundamentals → Scoring → Gemini AI
+ * Unified pipeline: Yahoo OHLCV + Fundamentals + 3-Factor Entry Scoring → Gemini AI
  */
 import { POPULAR_STOCKS } from '../data/indianStocks';
 import { calculateRSI, calculateMACD, detectPatterns, calculateConfidenceScore } from './technicalIndicators';
@@ -9,6 +9,7 @@ import { fetchYahooOHLCV } from './stockSearchService';
 import { fetchMultiTimeframeData } from './multiTimeframeService';
 import { fetchFundamentals } from './fundamentalService';
 import { calculateSignal } from '../utils/signals';
+import { calculateEntryPoint } from '../utils/entryScoring';
 
 // ── Seeded simulation fallback ────────────────────────────────
 function generateSimulatedCandles(symbol) {
@@ -90,6 +91,21 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null) {
   const avgVol = candles.slice(-volPeriod).reduce((sum, c) => sum + c.volume, 0) / volPeriod;
   const volumeRatio = avgVol > 0 ? +(lastCandle.volume / avgVol).toFixed(2) : 1.0;
 
+  // Combine raw fundamental data for entry calculation
+  const rawFund = fundamentals?.raw || {};
+  const entryData = {
+    currentPrice: rawFund.currentPrice || lastPrice,
+    fiftyTwoWeekHigh: rawFund.fiftyTwoWeekHigh || Math.max(...candles.map(c => c.high)),
+    fiftyTwoWeekLow: rawFund.fiftyTwoWeekLow || Math.min(...candles.map(c => c.low)),
+    fiftyDayAverage: rawFund.fiftyDayAverage || ma50,
+    twoHundredDayAverage: rawFund.twoHundredDayAverage || (ma200 > 0 ? ma200 : ma50 * 0.95),
+    trailingPE: rawFund.trailingPE,
+    forwardPE: rawFund.forwardPE,
+  };
+
+  // 3-FACTOR ENTRY POINT SYSTEM CALCULATION
+  const entryAnalysis = calculateEntryPoint(entryData, rsi.value, macd);
+
   const signalResult = calculateSignal({
     rsi: rsi.value,
     macdHistogram: macd.histogram,
@@ -100,22 +116,6 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null) {
     ma200,
     volumeRatio
   });
-
-  // Technical Entry Timing Signals for Long-Term Investors
-  let technicalEntrySignal = 'Wait for Better Entry ⏳';
-  let technicalEntryColor = '#ffd700';
-
-  if (rsi.value < 35) {
-    technicalEntrySignal = 'Excellent Dip — Strong Entry 💪';
-    technicalEntryColor = '#00ff88';
-  } else if (rsi.value < 48 || (rsi.value <= 55 && fundamentals.overall.total >= 65)) {
-    technicalEntrySignal = 'Good Entry Point Now ✅';
-    technicalEntryColor = '#00d4ff';
-  }
-
-  // Support level (lowest low of last 50 candles or 90% of lastPrice)
-  const lowest50 = Math.min(...candles.slice(-50).map(c => c.low));
-  const supportLevel = isFinite(lowest50) ? +lowest50.toFixed(2) : +(lastPrice * 0.9).toFixed(2);
 
   // Step 3: Meta info
   const localMeta = POPULAR_STOCKS.find(s => s.symbol.toUpperCase() === symbol.split('.')[0]);
@@ -135,13 +135,16 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null) {
     volumeRatio
   };
 
-  // Step 4: Long Term Gemini AI Analysis
+  // Step 4: Long Term Gemini AI Analysis with Entry Point Analysis
   const aiAnalysis = await analyzeFundamentalWithGemini({
     symbol: meta.symbol,
     name: meta.name,
     sector: meta.sector,
     price: meta.price,
     fundamentals,
+    entryAnalysis,
+    rsi,
+    macd,
     geminiApiKey
   });
 
@@ -153,9 +156,7 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null) {
     detectedPatterns,
     confidence,
     signalResult,
-    technicalEntrySignal,
-    technicalEntryColor,
-    supportLevel,
+    entryAnalysis,
     fundamentals,
     aiAnalysis,
     multiData

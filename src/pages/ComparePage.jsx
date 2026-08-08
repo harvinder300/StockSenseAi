@@ -2,12 +2,14 @@ import React, { useState, useCallback } from 'react';
 import StockSearchInput from '../components/StockSearchInput';
 import { getFullStockAnalysis } from '../services/stockDataService';
 import { compareStocksWithGemini } from '../services/geminiService';
-import { Scale, Trophy, Sparkles, TrendingUp, BarChart2, ArrowUpRight, ArrowDownRight, Wifi, WifiOff, Award, CheckCircle2 } from 'lucide-react';
+import { Scale, Trophy, TrendingUp, BarChart2, ArrowUpRight, ArrowDownRight, Wifi, WifiOff, Award, CheckCircle2, Target } from 'lucide-react';
 
 /* ─── Individual Fundamental stock card ─────────────────────────────── */
 function StockResultCard({ data, isWinner }) {
   const pctColor = data.meta.pChange >= 0 ? '#00ff88' : '#ff4757';
   const overall = data.fundamentals?.overall || { total: 50, verdict: 'Average', color: '#ffd700', emoji: '⚖️' };
+  const entryRes = data.entryAnalysis || {};
+
   const pillars = [
     { name: 'Valuation', score: data.fundamentals?.valuation?.score || 0, color: '#00d4ff' },
     { name: 'Growth', score: data.fundamentals?.growth?.score || 0, color: '#00ff88' },
@@ -37,7 +39,7 @@ function StockResultCard({ data, isWinner }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
           <Trophy size={14} color="#ffd700" />
           <span style={{ fontSize: 11, fontWeight: 800, color: '#ffd700', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-            Winner — Higher Fundamental Score
+            Winner — Overall Rating
           </span>
         </div>
       )}
@@ -71,15 +73,30 @@ function StockResultCard({ data, isWinner }) {
       </div>
 
       {/* Long Term Score Box */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: `${overall.color}12`, border: `1px solid ${overall.color}35`, borderRadius: 'var(--radius)', padding: '14px 16px', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: `${overall.color}12`, border: `1px solid ${overall.color}35`, borderRadius: 'var(--radius)', padding: '12px 14px', marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase' }}>Long-Term Score</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: overall.color, marginTop: 2 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase' }}>Fundamental Rating</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: overall.color, marginTop: 2 }}>
             {overall.emoji} {overall.verdict}
           </div>
         </div>
-        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 28, fontWeight: 900, color: overall.color }}>
-          {overall.total}<span style={{ fontSize: 16, color: '#8892a4' }}>/100</span>
+        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 24, fontWeight: 900, color: overall.color }}>
+          {overall.total}<span style={{ fontSize: 14, color: '#8892a4' }}>/100</span>
+        </div>
+      </div>
+
+      {/* 3-Factor Entry Timing Box */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: `${entryRes.entryColor || '#00d4ff'}12`, border: `1px solid ${entryRes.entryColor || '#00d4ff'}35`, borderRadius: 'var(--radius)', padding: '12px 14px', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Target size={12} color={entryRes.entryColor || '#00d4ff'} /> Entry Timing Score
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: entryRes.entryColor || '#00d4ff', marginTop: 2 }}>
+            {entryRes.entryEmoji} {entryRes.entryVerdict || 'Decent Entry'}
+          </div>
+        </div>
+        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 24, fontWeight: 900, color: entryRes.entryColor || '#00d4ff' }}>
+          {entryRes.entryScore || 50}<span style={{ fontSize: 14, color: '#8892a4' }}>/100</span>
         </div>
       </div>
 
@@ -158,12 +175,14 @@ export default function ComparePage({ geminiApiKey }) {
           name: a.meta.name,
           price: a.meta.price,
           fundamentals: a.fundamentals,
+          entryAnalysis: a.entryAnalysis
         },
         stockB: {
           symbol: b.meta.symbol,
           name: b.meta.name,
           price: b.meta.price,
           fundamentals: b.fundamentals,
+          entryAnalysis: b.entryAnalysis
         },
         geminiApiKey,
       });
@@ -205,6 +224,9 @@ export default function ComparePage({ geminiApiKey }) {
   const scoreA = stockA?.fundamentals?.overall?.total ?? 0;
   const scoreB = stockB?.fundamentals?.overall?.total ?? 0;
 
+  const entryScoreA = stockA?.entryAnalysis?.entryScore ?? 0;
+  const entryScoreB = stockB?.entryAnalysis?.entryScore ?? 0;
+
   const winnerName = scoreA > scoreB + 5 ? stockA?.meta.name : scoreB > scoreA + 5 ? stockB?.meta.name : 'Tie / Similar Quality';
   const isWinnerA = scoreA > scoreB + 5;
   const isWinnerB = scoreB > scoreA + 5;
@@ -216,13 +238,13 @@ export default function ComparePage({ geminiApiKey }) {
       <div className="ss-card" style={{ padding: 32, marginBottom: 24 }}>
         <div style={{ textAlign: 'center', marginBottom: 20 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(0,212,255,0.1)', color: '#00d4ff', padding: '4px 14px', borderRadius: 99, fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
-            <Award size={14} /> Fundamental Comparison
+            <Award size={14} /> Fundamental &amp; Entry Timing Comparison
           </div>
           <h1 style={{ fontFamily: 'Poppins,sans-serif', fontSize: 28, fontWeight: 900, color: '#fff', marginBottom: 6 }}>
             Compare 2 <span style={{ color: '#00d4ff' }}>Long-Term Stocks</span>
           </h1>
           <p style={{ fontSize: 14, color: '#8892a4', maxWidth: 540, margin: '0 auto' }}>
-            Compare Valuation, Growth, Health, Profitability &amp; Dividend scores side-by-side to find the best long-term investment.
+            Compare 5-Pillar Fundamentals &amp; 3-Factor Entry Timing Scores side-by-side.
           </p>
         </div>
 
@@ -270,10 +292,10 @@ export default function ComparePage({ geminiApiKey }) {
             <Scale size={26} color="#00d4ff" />
           </div>
           <p style={{ fontSize: 15, fontWeight: 700, color: '#8892a4' }}>
-            Search and select two stocks above to compare 5-pillar fundamentals
+            Search and select two stocks above to compare fundamentals &amp; entry timing
           </p>
           <p style={{ fontSize: 13, color: '#4a5568', marginTop: 6 }}>
-            Valuation · Growth · Financial Health · Profitability · Dividend Yield
+            5-Pillar Fundamentals · 3-Factor Entry Timing · Tranche Strategy
           </p>
         </div>
       )}
@@ -294,14 +316,14 @@ export default function ComparePage({ geminiApiKey }) {
             </div>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>
-                {verdict?.isGeminiLive ? '✦ Gemini Long-Term AI Comparison' : '✦ Fundamental Comparison Verdict'}
+                {verdict?.isGeminiLive ? '✦ Gemini Long-Term AI Comparison' : '✦ Fundamental & Entry Comparison Verdict'}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <span style={{ fontFamily: 'Poppins,sans-serif', fontSize: 15, fontWeight: 800, color: '#fff' }}>
                   Better Long-Term Pick:
                 </span>
                 <span style={{ background: 'rgba(255,215,0,0.15)', color: '#ffd700', border: '1px solid rgba(255,215,0,0.35)', padding: '4px 16px', borderRadius: 99, fontFamily: 'Poppins,sans-serif', fontWeight: 900, fontSize: 14 }}>
-                  {winnerName} ({scoreA} vs {scoreB})
+                  {winnerName} (Fund: {scoreA} vs {scoreB} | Entry: {entryScoreA} vs {entryScoreB})
                 </span>
               </div>
             </div>

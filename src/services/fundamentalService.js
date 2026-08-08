@@ -1,6 +1,6 @@
 /**
  * fundamentalService.js
- * Fetches Yahoo Finance quoteSummary for fundamental analysis & scoring
+ * Fetches Yahoo Finance quoteSummary for fundamental analysis, pillar scoring & 3-Factor entry system
  */
 import { stripHtml } from '../utils/security';
 import {
@@ -60,28 +60,42 @@ export async function fetchFundamentals(symbolInput) {
 
     // Combine all fields into a flat dataset
     const combinedData = {
+      // Entry & Price Levels
+      currentPrice: getVal(financialData.currentPrice),
+      fiftyTwoWeekHigh: getVal(summaryDetail.fiftyTwoWeekHigh),
+      fiftyTwoWeekLow: getVal(summaryDetail.fiftyTwoWeekLow),
+      fiftyDayAverage: getVal(summaryDetail.fiftyDayAverage),
+      twoHundredDayAverage: getVal(summaryDetail.twoHundredDayAverage),
+
+      // Valuation
       trailingPE: getVal(summaryDetail.trailingPE),
+      forwardPE: getVal(summaryDetail.forwardPE),
       priceToBook: getVal(defaultKeyStatistics.priceToBook),
       pegRatio: getVal(defaultKeyStatistics.pegRatio),
       enterpriseToEbitda: getVal(defaultKeyStatistics.enterpriseToEbitda),
+      fiveYearAvgPE: getVal(defaultKeyStatistics.fiveYearAverageReturn),
 
+      // Growth
       revenueGrowth: getVal(financialData.revenueGrowth),
       earningsGrowth: getVal(financialData.earningsGrowth),
       earningsQuarterlyGrowth: getVal(defaultKeyStatistics.earningsQuarterlyGrowth),
       revenueQuarterlyGrowth: getVal(defaultKeyStatistics.revenueQuarterlyGrowth),
 
+      // Profitability
       returnOnEquity: getVal(financialData.returnOnEquity),
       returnOnAssets: getVal(financialData.returnOnAssets),
       profitMargins: getVal(financialData.profitMargins),
       operatingMargins: getVal(financialData.operatingMargins),
       grossMargins: getVal(financialData.grossMargins),
 
+      // Health
       debtToEquity: getVal(financialData.debtToEquity),
       currentRatio: getVal(financialData.currentRatio),
       quickRatio: getVal(financialData.quickRatio),
       totalCashPerShare: getVal(financialData.totalCashPerShare),
       freeCashflow: getVal(financialData.freeCashflow),
 
+      // Dividends
       dividendYield: getVal(summaryDetail.dividendYield),
       dividendRate: getVal(summaryDetail.dividendRate),
       payoutRatio: getVal(summaryDetail.payoutRatio),
@@ -129,28 +143,41 @@ export async function fetchFundamentals(symbolInput) {
 // Fallback generator if quoteSummary is blocked or empty
 function getFallbackFundamentals(symbol) {
   const combinedData = {
+    currentPrice: 1500,
+    fiftyTwoWeekHigh: 1850,
+    fiftyTwoWeekLow: 1150,
+    fiftyDayAverage: 1420,
+    twoHundredDayAverage: 1350,
+
     trailingPE: 22.5,
+    forwardPE: 18.2,
     priceToBook: 2.8,
     pegRatio: 1.2,
     enterpriseToEbitda: 14.5,
+    fiveYearAvgPE: 20.0,
+
     revenueGrowth: 0.14,
     earningsGrowth: 0.18,
     earningsQuarterlyGrowth: 0.12,
     revenueQuarterlyGrowth: 0.10,
+
     returnOnEquity: 0.185,
     returnOnAssets: 0.082,
     profitMargins: 0.155,
     operatingMargins: 0.21,
     grossMargins: 0.42,
+
     debtToEquity: 35.0,
     currentRatio: 1.85,
     quickRatio: 1.25,
     totalCashPerShare: 42.0,
     freeCashflow: 12000000000,
+
     dividendYield: 0.012,
     dividendRate: 18.0,
     payoutRatio: 0.30,
     fiveYearAvgDividendYield: 1.1,
+
     marketCap: 1500000000000
   };
 
