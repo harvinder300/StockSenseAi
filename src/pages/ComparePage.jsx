@@ -3,7 +3,7 @@ import StockSearchInput from '../components/StockSearchInput';
 import { getFullStockAnalysis } from '../services/stockDataService';
 import { compareStocksWithGemini } from '../services/geminiService';
 import { NotFoundState } from '../components/ErrorStateCard';
-import { Scale, Trophy, TrendingUp, BarChart2, ArrowUpRight, ArrowDownRight, Wifi, WifiOff, Award, CheckCircle2, Target } from 'lucide-react';
+import { Scale, Trophy, TrendingUp, BarChart2, ArrowUpRight, ArrowDownRight, Wifi, Award, CheckCircle2, Target } from 'lucide-react';
 
 /* ─── Individual Fundamental stock card ─────────────────────────────── */
 function StockResultCard({ data, isWinner }) {
@@ -56,7 +56,7 @@ function StockResultCard({ data, isWinner }) {
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
             <span className="ss-badge ss-badge-blue" style={{ fontSize: 10 }}>{data.meta.sector}</span>
-            <span className="ss-badge ss-badge-green" style={{ fontSize: 10, display: 'inline-flex', gap: 4 }}><Wifi size={9} /> Real Live</span>
+            <span className="ss-badge ss-badge-green" style={{ fontSize: 10, display: 'inline-flex', gap: 4 }}><Wifi size={9} /> NSE Real-Time</span>
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -164,6 +164,8 @@ export default function ComparePage({ geminiApiKey }) {
   const [verdict, setVerdict] = useState(null);
   const [verdictLoading, setVerdictLoading] = useState(false);
 
+  const alphaKey = localStorage.getItem('alphavantage_api_key') || null;
+
   // Run Gemini comparison whenever both stocks are loaded
   const runComparison = useCallback(async (a, b) => {
     if (!a || !b) return;
@@ -196,38 +198,40 @@ export default function ComparePage({ geminiApiKey }) {
   }, [geminiApiKey]);
 
   const handleSelectA = useCallback(async (sym, name) => {
-    setNameA(name || sym.split('.')[0]);
+    const bare = sym.replace(/\.(NS|BO)$/i, '');
+    setNameA(name || bare);
     setStockA(null);
     setFailedA(false);
     setVerdict(null);
     setLoadingA(true);
     try {
-      const data = await getFullStockAnalysis(sym, geminiApiKey);
-      if (data) {
-        setStockA(data);
-        setStockB(prev => { if (prev) runComparison(data, prev); return prev; });
+      const res = await getFullStockAnalysis(bare, geminiApiKey, alphaKey);
+      if (res?.data) {
+        setStockA(res.data);
+        setStockB(prev => { if (prev) runComparison(res.data, prev); return prev; });
       } else {
         setFailedA(true);
       }
     } finally { setLoadingA(false); }
-  }, [geminiApiKey, runComparison]);
+  }, [geminiApiKey, alphaKey, runComparison]);
 
   const handleSelectB = useCallback(async (sym, name) => {
-    setNameB(name || sym.split('.')[0]);
+    const bare = sym.replace(/\.(NS|BO)$/i, '');
+    setNameB(name || bare);
     setStockB(null);
     setFailedB(false);
     setVerdict(null);
     setLoadingB(true);
     try {
-      const data = await getFullStockAnalysis(sym, geminiApiKey);
-      if (data) {
-        setStockB(data);
-        setStockA(prev => { if (prev) runComparison(prev, data); return prev; });
+      const res = await getFullStockAnalysis(bare, geminiApiKey, alphaKey);
+      if (res?.data) {
+        setStockB(res.data);
+        setStockA(prev => { if (prev) runComparison(prev, res.data); return prev; });
       } else {
         setFailedB(true);
       }
     } finally { setLoadingB(false); }
-  }, [geminiApiKey, runComparison]);
+  }, [geminiApiKey, alphaKey, runComparison]);
 
   const bothLoaded = Boolean(stockA && stockB);
 
@@ -263,7 +267,7 @@ export default function ComparePage({ geminiApiKey }) {
           <SearchSlot
             label="Stock A"
             icon={TrendingUp}
-            placeholder="Search first stock… e.g. Reliance, TCS"
+            placeholder="Search first stock… e.g. RELIANCE, TCS"
             color="rgba(0,212,255,0.5)"
             onSelect={handleSelectA}
             currentName={nameA}
@@ -277,7 +281,7 @@ export default function ComparePage({ geminiApiKey }) {
           <SearchSlot
             label="Stock B"
             icon={BarChart2}
-            placeholder="Search second stock… e.g. HDFC, Infosys"
+            placeholder="Search second stock… e.g. HDFCBANK, INFY"
             color="rgba(0,255,136,0.4)"
             onSelect={handleSelectB}
             currentName={nameB}

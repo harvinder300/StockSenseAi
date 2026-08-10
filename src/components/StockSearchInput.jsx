@@ -143,7 +143,7 @@ export default function StockSearchInput({ placeholder = 'Search stock...', onSe
             {!inputError && searching && (
               <div style={{ padding: '13px 16px', color: '#8892a4', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ width: 13, height: 13, border: '2px solid #00d4ff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
-                Searching Yahoo Finance…
+                Searching NSE Direct API…
               </div>
             )}
 

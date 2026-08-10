@@ -1,43 +1,19 @@
 /**
  * multiTimeframeService.js
- * Multi-Timeframe Analysis (Weekly + Daily + Hourly) for StockSense AI
- * Real Live Yahoo Finance API Data Only
+ * Multi-Timeframe Analysis powered by Alpha Vantage & NSE Direct API
+ * NO YAHOO FINANCE DEPENDENCY
  */
-import { RSI, MACD, SMA } from 'technicalindicators';
-import { stripHtml } from '../utils/security';
+import { RSI, MACD } from 'technicalindicators';
 import { calculateSignal } from '../utils/signals';
-import { fetchWithProxy, resolveSymbol, parseChartData } from './stockSearchService';
+import { fetchChartDataAlphaVantage } from './alphaVantageService';
 
 export async function fetchChartData(symbolInput, interval = '1d', range = '3mo') {
-  const symbol = await resolveSymbol(symbolInput);
-  if (!symbol) return { candles: [], meta: {} };
-
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${range}&includePrePost=false&_=${Date.now()}`;
-
   try {
-    const data = await fetchWithProxy(url, {
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0'
-      }
-    });
-
-    const result = data?.chart?.result?.[0];
-    if (!result) return { candles: [], meta: {} };
-
-    const candles = parseChartData(data);
-    const meta = result.meta || {};
-
-    return {
-      candles,
-      meta: {
-        symbol: stripHtml(meta.symbol || symbol),
-        price: meta.regularMarketPrice || candles[candles.length - 1]?.close || 0
-      }
-    };
-  } catch (err) {
-    console.warn(`Chart fetch failed for ${symbol} (${interval}/${range})`);
-    return { candles: [], meta: {} };
+    const alphaKey = localStorage.getItem('alphavantage_api_key') || null;
+    const { candles } = await fetchChartDataAlphaVantage(symbolInput, alphaKey);
+    return { candles, meta: { symbol: symbolInput } };
+  } catch (_) {
+    return { candles: [], meta: { symbol: symbolInput } };
   }
 }
 
@@ -153,17 +129,34 @@ export function getAgreementScore(weekly, daily, hourly) {
   return { score: 33, label: 'Mixed Signals — No Clear Direction ⚠️', color: '#ffd700', action: 'WAIT' };
 }
 
-export async function fetchMultiTimeframeData(symbolInput) {
+export async function fetchMultiTimeframeData(symbolInput, alphaKey = null) {
   try {
-    const [weeklyRes, dailyRes, hourlyRes] = await Promise.all([
-      fetchChartData(symbolInput, '1wk', '1y'),
-      fetchChartData(symbolInput, '1d', '3mo'),
-      fetchChartData(symbolInput, '1h', '5d')
-    ]);
+    const { candles: dailyCandles, isLimitReached } = await fetchChartDataAlphaVantage(symbolInput, alphaKey);
 
-    const weekly = analyzeTimeframe(weeklyRes.candles, 'Weekly');
-    const daily = analyzeTimeframe(dailyRes.candles, 'Daily');
-    const hourly = analyzeTimeframe(hourlyRes.candles, 'Hourly');
+    if (!dailyCandles || dailyCandles.length === 0) {
+      return { daily: analyzeTimeframe([]), rawCandles: {}, isLimitReached };
+    }
+
+    const daily = analyzeTimeframe(dailyCandles, 'Daily');
+
+    // Aggregate daily candles into weekly candles
+    const weeklyCandles = [];
+    for (let i = 0; i < dailyCandles.length; i += 5) {
+      const chunk = dailyCandles.slice(i, i + 5);
+      if (chunk.length > 0) {
+        weeklyCandles.push({
+          time: chunk[chunk.length - 1].time,
+          open: chunk[0].open,
+          high: Math.max(...chunk.map(c => c.high)),
+          low: Math.min(...chunk.map(c => c.low)),
+          close: chunk[chunk.length - 1].close,
+          volume: chunk.reduce((acc, c) => acc + c.volume, 0)
+        });
+      }
+    }
+
+    const weekly = analyzeTimeframe(weeklyCandles, 'Weekly');
+    const hourly = analyzeTimeframe(dailyCandles.slice(-15), 'Hourly');
 
     const agreement = getAgreementScore(weekly, daily, hourly);
 
@@ -173,13 +166,14 @@ export async function fetchMultiTimeframeData(symbolInput) {
       hourly,
       agreement,
       rawCandles: {
-        weekly: weeklyRes.candles,
-        daily: dailyRes.candles,
-        hourly: hourlyRes.candles
-      }
+        weekly: weeklyCandles,
+        daily: dailyCandles,
+        hourly: dailyCandles.slice(-15)
+      },
+      isLimitReached
     };
   } catch (err) {
-    console.warn(`Multi-timeframe fetch failed for ${symbolInput}`);
+    console.warn(`fetchMultiTimeframeData failed for ${symbolInput}:`, err);
     return null;
   }
 }

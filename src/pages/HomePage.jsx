@@ -1,20 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { fetchWithProxy } from '../services/stockSearchService';
+import { fetchNiftyAndSensex, fetchNSEGainers, fetchNSELosers } from '../services/nseService';
 import MarketMoodGauge from '../components/MarketMoodGauge';
 import { TrendingUp, TrendingDown, Activity, ArrowRight, Sparkles, RefreshCw } from 'lucide-react';
-
-const DEFAULT_POPULAR = [
-  { symbol: 'RELIANCE', name: 'Reliance Industries Ltd.', sector: 'Energy & Oil' },
-  { symbol: 'TCS', name: 'Tata Consultancy Services Ltd.', sector: 'IT Services' },
-  { symbol: 'HDFCBANK', name: 'HDFC Bank Ltd.', sector: 'Banking' },
-  { symbol: 'INFY', name: 'Infosys Ltd.', sector: 'IT Services' },
-  { symbol: 'BHARTIARTL', name: 'Bharti Airtel Ltd.', sector: 'Telecom' },
-  { symbol: 'ITC', name: 'ITC Ltd.', sector: 'FMCG' },
-  { symbol: 'TATAMOTORS', name: 'Tata Motors Ltd.', sector: 'Automobile' },
-  { symbol: 'LT', name: 'Larsen & Toubro Ltd.', sector: 'Construction' },
-  { symbol: 'SBIN', name: 'State Bank of India', sector: 'Banking' },
-  { symbol: 'WIPRO', name: 'Wipro Ltd.', sector: 'IT Services' },
-];
 
 export default function HomePage({ onSelectStock, onNavigate }) {
   const [indices, setIndices] = useState({
@@ -22,69 +9,36 @@ export default function HomePage({ onSelectStock, onNavigate }) {
     sensex: { name: 'SENSEX', price: null, change: 0, pChange: 0, high: null, low: null },
   });
 
-  const [liveStocks, setLiveStocks] = useState([]);
+  const [topGainers, setTopGainers] = useState([]);
+  const [topLosers, setTopLosers] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch Live Nifty & Sensex indices from Yahoo Finance API
+  // Fetch Live Nifty, Sensex, Gainers & Losers from NSE Direct API
   useEffect(() => {
     let isMounted = true;
 
     async function loadLiveHomeData() {
       setLoading(true);
       try {
-        // Fetch Nifty (^NSEI) and Sensex (^BSESN)
-        const indicesUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5ENSEI,%5EBSESN&_=${Date.now()}`;
-        const data = await fetchWithProxy(indicesUrl);
-        const quotes = data?.quoteResponse?.result || [];
+        const [indicesData, gainersData, losersData] = await Promise.all([
+          fetchNiftyAndSensex(),
+          fetchNSEGainers(),
+          fetchNSELosers()
+        ]);
 
-        const niftyQuote = quotes.find(q => q.symbol === '^NSEI');
-        const sensexQuote = quotes.find(q => q.symbol === '^BSESN');
+        if (isMounted) {
+          if (indicesData.nifty || indicesData.sensex) {
+            setIndices({
+              nifty: indicesData.nifty || { name: 'NIFTY 50', price: null, change: 0, pChange: 0, high: null, low: null },
+              sensex: indicesData.sensex || { name: 'SENSEX', price: null, change: 0, pChange: 0, high: null, low: null }
+            });
+          }
 
-        if (isMounted && (niftyQuote || sensexQuote)) {
-          setIndices({
-            nifty: {
-              name: 'NIFTY 50',
-              price: niftyQuote?.regularMarketPrice || null,
-              change: +(niftyQuote?.regularMarketChange || 0).toFixed(2),
-              pChange: +(niftyQuote?.regularMarketChangePercent || 0).toFixed(2),
-              high: niftyQuote?.regularMarketDayHigh || null,
-              low: niftyQuote?.regularMarketDayLow || null,
-            },
-            sensex: {
-              name: 'SENSEX',
-              price: sensexQuote?.regularMarketPrice || null,
-              change: +(sensexQuote?.regularMarketChange || 0).toFixed(2),
-              pChange: +(sensexQuote?.regularMarketChangePercent || 0).toFixed(2),
-              high: sensexQuote?.regularMarketDayHigh || null,
-              low: sensexQuote?.regularMarketDayLow || null,
-            }
-          });
-        }
-
-        // Fetch Live quotes for Top Indian Stocks
-        const symbolsParam = DEFAULT_POPULAR.map(s => `${s.symbol}.NS`).join(',');
-        const stocksUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbolsParam}&_=${Date.now()}`;
-        const stockData = await fetchWithProxy(stocksUrl);
-        const stockQuotes = stockData?.quoteResponse?.result || [];
-
-        if (isMounted && stockQuotes.length > 0) {
-          const parsed = stockQuotes.map(q => {
-            const bareSym = q.symbol.replace(/\.NS$/, '');
-            const local = DEFAULT_POPULAR.find(p => p.symbol === bareSym) || {};
-            return {
-              symbol: bareSym,
-              name: q.shortName || q.longName || local.name || bareSym,
-              sector: local.sector || 'NSE Equity',
-              price: q.regularMarketPrice || 0,
-              change: +(q.regularMarketChange || 0).toFixed(2),
-              pChange: +(q.regularMarketChangePercent || 0).toFixed(2)
-            };
-          });
-
-          setLiveStocks(parsed);
+          if (gainersData && gainersData.length > 0) setTopGainers(gainersData);
+          if (losersData && losersData.length > 0) setTopLosers(losersData);
         }
       } catch (err) {
-        console.warn('Home page live data fetch error:', err);
+        console.warn('Home page NSE fetch error:', err);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -94,30 +48,26 @@ export default function HomePage({ onSelectStock, onNavigate }) {
     return () => { isMounted = false; };
   }, []);
 
-  // Calculate top gainers & losers dynamically from REAL live stocks
-  const sortedStocks = [...liveStocks].sort((a, b) => b.pChange - a.pChange);
-  const topGainers = sortedStocks.slice(0, 5);
-  const topLosers  = sortedStocks.slice(-5).reverse();
-
   // Dynamic market mood score calculated from advances / declines
-  const advances = liveStocks.filter(s => s.pChange > 0).length;
-  const declines = liveStocks.filter(s => s.pChange < 0).length;
-  const moodScore = liveStocks.length > 0 ? Math.round((advances / liveStocks.length) * 100) : 50;
+  const totalMovers = topGainers.length + topLosers.length;
+  const advances = topGainers.length;
+  const declines = topLosers.length;
+  const moodScore = totalMovers > 0 ? Math.round((advances / totalMovers) * 100) : 50;
 
   const marketMood = {
     verdict: moodScore >= 60 ? 'Bullish' : moodScore <= 40 ? 'Bearish' : 'Neutral',
     score: moodScore,
     description: moodScore >= 60
-      ? `Strong market buying in major Indian equities (${advances}/${liveStocks.length} advancing).`
+      ? `Strong market buying in major Indian equities (${advances} gaining / ${declines} losing).`
       : moodScore <= 40
-      ? `Selling pressure observed across major sectors (${declines}/${liveStocks.length} declining).`
+      ? `Selling pressure observed across major sectors (${declines} losing / ${advances} gaining).`
       : `Market trading in a rangebound sideways zone (${advances} advances / ${declines} declines).`,
     advances,
     declines,
-    unchanged: liveStocks.length - (advances + declines)
+    unchanged: 0
   };
 
-  const fmtPrice = (p) => typeof p === 'number' ? p.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : 'Loading…';
+  const fmtPrice = (p) => typeof p === 'number' && p > 0 ? p.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : 'Loading…';
 
   return (
     <div className="fade-up">
@@ -152,7 +102,7 @@ export default function HomePage({ onSelectStock, onNavigate }) {
         </div>
         <div className="ss-live-dot">
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#00ff88', display: 'inline-block', animation: 'pulse 2s infinite' }} />
-          NSE &amp; BSE Live API
+          NSE Direct API Live
         </div>
       </div>
 
@@ -168,7 +118,7 @@ export default function HomePage({ onSelectStock, onNavigate }) {
                 {idx.change >= 0 ? '+' : ''}{idx.change} ({idx.pChange}%)
               </div>
             ) : (
-              <div style={{ fontSize: 12, color: '#8892a4', marginTop: 4 }}>Connecting to Yahoo API…</div>
+              <div style={{ fontSize: 12, color: '#8892a4', marginTop: 4 }}>Connecting to NSE API…</div>
             )}
             <div className="ss-index-meta">
               <span>Day High: <strong>{idx.high ? `₹${fmtPrice(idx.high)}` : '—'}</strong></span>
@@ -181,64 +131,68 @@ export default function HomePage({ onSelectStock, onNavigate }) {
       {/* ── Dynamic Market Mood Gauge ── */}
       <MarketMoodGauge mood={marketMood} />
 
-      {/* ── Real Live Gainers & Losers ── */}
-      {liveStocks.length > 0 && (
-        <div className="ss-movers-grid">
+      {/* ── Real Live Gainers & Losers from NSE Direct API ── */}
+      <div className="ss-movers-grid">
 
-          {/* Gainers */}
-          <div className="ss-movers-card">
-            <div className="ss-movers-header">
-              <div className="ss-movers-title">
-                <span className="ss-movers-icon up"><TrendingUp size={16} /></span>
-                Top Gaining Stocks (Live)
-              </div>
-              <span className="ss-badge ss-badge-green">Live API</span>
+        {/* Gainers */}
+        <div className="ss-movers-card">
+          <div className="ss-movers-header">
+            <div className="ss-movers-title">
+              <span className="ss-movers-icon up"><TrendingUp size={16} /></span>
+              Top 5 Gaining Stocks (NSE Direct)
             </div>
-            {topGainers.map((s) => (
-              <div key={s.symbol} className="ss-stock-row" onClick={() => onSelectStock(s.symbol)}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <span className="ss-stock-sym">{s.symbol}</span>
-                    <span className="ss-stock-sect">{s.sector}</span>
-                  </div>
-                  <div className="ss-stock-name">{s.name}</div>
-                </div>
-                <div>
-                  <div className="ss-stock-price">₹{s.price.toFixed(2)}</div>
-                  <div className="ss-stock-pct up">+{s.pChange}%</div>
-                </div>
-              </div>
-            ))}
+            <span className="ss-badge ss-badge-green">NSE Live</span>
           </div>
-
-          {/* Losers */}
-          <div className="ss-movers-card">
-            <div className="ss-movers-header">
-              <div className="ss-movers-title">
-                <span className="ss-movers-icon down"><TrendingDown size={16} /></span>
-                Top Losing Stocks (Live)
+          {topGainers.map((s) => (
+            <div key={s.symbol} className="ss-stock-row" onClick={() => onSelectStock(s.symbol)}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span className="ss-stock-sym">{s.symbol}</span>
+                  <span className="ss-stock-sect">{s.sector}</span>
+                </div>
+                <div className="ss-stock-name">{s.name}</div>
               </div>
-              <span className="ss-badge ss-badge-red">Live API</span>
+              <div>
+                <div className="ss-stock-price">₹{typeof s.price === 'number' ? s.price.toFixed(2) : s.price}</div>
+                <div className="ss-stock-pct up">+{s.pChange}%</div>
+              </div>
             </div>
-            {topLosers.map((s) => (
-              <div key={s.symbol} className="ss-stock-row" onClick={() => onSelectStock(s.symbol)}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <span className="ss-stock-sym">{s.symbol}</span>
-                    <span className="ss-stock-sect">{s.sector}</span>
-                  </div>
-                  <div className="ss-stock-name">{s.name}</div>
-                </div>
-                <div>
-                  <div className="ss-stock-price">₹{s.price.toFixed(2)}</div>
-                  <div className="ss-stock-pct down">{s.pChange}%</div>
-                </div>
-              </div>
-            ))}
-          </div>
-
+          ))}
+          {topGainers.length === 0 && (
+            <div style={{ fontSize: 13, color: '#8892a4', padding: 16 }}>Market closed or fetching NSE data…</div>
+          )}
         </div>
-      )}
+
+        {/* Losers */}
+        <div className="ss-movers-card">
+          <div className="ss-movers-header">
+            <div className="ss-movers-title">
+              <span className="ss-movers-icon down"><TrendingDown size={16} /></span>
+              Top 5 Losing Stocks (NSE Direct)
+            </div>
+            <span className="ss-badge ss-badge-red">NSE Live</span>
+          </div>
+          {topLosers.map((s) => (
+            <div key={s.symbol} className="ss-stock-row" onClick={() => onSelectStock(s.symbol)}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span className="ss-stock-sym">{s.symbol}</span>
+                  <span className="ss-stock-sect">{s.sector}</span>
+                </div>
+                <div className="ss-stock-name">{s.name}</div>
+              </div>
+              <div>
+                <div className="ss-stock-price">₹{typeof s.price === 'number' ? s.price.toFixed(2) : s.price}</div>
+                <div className="ss-stock-pct down">{s.pChange}%</div>
+              </div>
+            </div>
+          ))}
+          {topLosers.length === 0 && (
+            <div style={{ fontSize: 13, color: '#8892a4', padding: 16 }}>Market closed or fetching NSE data…</div>
+          )}
+        </div>
+
+      </div>
     </div>
   );
 }

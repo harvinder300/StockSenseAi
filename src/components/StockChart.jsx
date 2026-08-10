@@ -226,7 +226,7 @@ export default function StockChart({ candles: initialCandles, symbol, timeframe 
       {/* Footer Info */}
       {currentCandles && currentCandles.length > 0 && (
         <div style={{ textAlign: 'center', marginTop: 16, fontSize: 11, color: '#8892a4', fontWeight: 600 }}>
-          Data as of: {currentCandles[currentCandles.length - 1].time} | Timeframe: {activeTab} | 15 min delayed | Source: Yahoo Finance
+          Data as of: {currentCandles[currentCandles.length - 1].time} | Timeframe: {activeTab} | Source: NSE Direct API & Alpha Vantage
         </div>
       )}
     </div>
