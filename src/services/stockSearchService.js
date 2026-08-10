@@ -1,16 +1,41 @@
 /**
  * stockSearchService.js
  * Ultra-Fast High-Speed Parallel Market Data Fetcher & Chart Parser
- * Uses Promise.any / Promise.race for sub-second (<1s) latency on Localhost & Production (Vercel)
+ * Supports Symbol Resolution for Gland Pharma (GLAND), CG Power (CGPOWER), Stallion (STALLION), Reliance (RELIANCE), etc.
  */
 
 import { stripHtml } from '../utils/security';
 import { fetchChartDataAlphaVantage } from './alphaVantageService';
+import { COMPANY_NAME_MAP, POPULAR_STOCKS } from '../data/indianStocks';
 
 const CORS_PROXIES = [
   (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
   (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
 ];
+
+/**
+ * Resolves full company names or input strings into exact NSE tickers (e.g. "Gland Pharma Limited" -> "GLAND")
+ */
+export function resolveTicker(input) {
+  if (!input) return 'RELIANCE';
+  const clean = input.trim().toUpperCase().replace(/\.(NS|BO|BSE|NSE)$/i, '');
+
+  if (COMPANY_NAME_MAP[clean]) {
+    return COMPANY_NAME_MAP[clean];
+  }
+
+  for (const key of Object.keys(COMPANY_NAME_MAP)) {
+    if (clean.includes(key) || key.includes(clean)) {
+      return COMPANY_NAME_MAP[key];
+    }
+  }
+
+  const found = POPULAR_STOCKS.find(s =>
+    s.symbol.toUpperCase() === clean || s.name.toUpperCase().includes(clean)
+  );
+
+  return found ? found.symbol : clean;
+}
 
 /**
  * Ultra-fast fetcher racing direct fetch & proxies concurrently
@@ -21,7 +46,6 @@ export async function fetchWithProxy(urlStr, options = {}) {
     urlsToTry.push(urlStr.replace('query1.finance.yahoo.com', 'query2.finance.yahoo.com'));
   }
 
-  // Helper fetcher with short timeout
   const trySingle = async (targetUrl, isProxy = false) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), isProxy ? 3000 : 2000);
@@ -42,7 +66,6 @@ export async function fetchWithProxy(urlStr, options = {}) {
     throw new Error('Failed single fetch');
   };
 
-  // Build array of concurrent fetch promises to race
   const promises = [];
   for (const u of urlsToTry) {
     promises.push(trySingle(u, false));
@@ -51,7 +74,6 @@ export async function fetchWithProxy(urlStr, options = {}) {
     }
   }
 
-  // Whichever fast proxy/direct fetch resolves first wins!
   try {
     return await Promise.any(promises);
   } catch (err) {
@@ -99,6 +121,20 @@ export async function searchStocks(query) {
   if (!query || query.trim().length < 1) return [];
   const clean = query.trim();
 
+  // Local dictionary search first for instant sub-10ms response
+  const resolvedSym = resolveTicker(clean);
+  const localMatch = POPULAR_STOCKS.find(s => s.symbol === resolvedSym);
+
+  const localResults = [];
+  if (localMatch) {
+    localResults.push({
+      symbol: localMatch.symbol,
+      name: localMatch.name,
+      exchange: 'NSE',
+      type: 'EQUITY'
+    });
+  }
+
   const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(clean)}&region=IN&lang=en-IN&quotesCount=10&newsCount=0&enableFuzzyQuery=true&_=${Date.now()}`;
 
   try {
@@ -115,11 +151,21 @@ export async function searchStocks(query) {
       }))
       .slice(0, 8);
 
-    if (results.length > 0) return results;
+    if (results.length > 0) {
+      // Merge local match at top if available
+      const merged = [...localResults];
+      results.forEach(r => {
+        if (!merged.some(m => m.symbol.replace(/\.(NS|BO)$/i, '') === r.symbol.replace(/\.(NS|BO)$/i, ''))) {
+          merged.push(r);
+        }
+      });
+      return merged;
+    }
   } catch (_) {}
 
-  // Local ticker formatting fallback
-  const bare = clean.toUpperCase().replace(/\.(NS|BO)$/i, '');
+  if (localResults.length > 0) return localResults;
+
+  const bare = resolvedSym;
   return [
     { symbol: `${bare}.NS`, name: `${bare} (NSE)`, exchange: 'NSE', type: 'EQUITY' },
     { symbol: `${bare}.BO`, name: `${bare} (BSE)`, exchange: 'BSE', type: 'EQUITY' }
@@ -131,7 +177,7 @@ export async function searchStocks(query) {
  */
 export async function fetchOHLCV(symbolInput, alphaKey = null) {
   if (!symbolInput) return null;
-  const bare = symbolInput.trim().toUpperCase().replace(/\.(NS|BO|BSE|NSE)$/i, '');
+  const bare = resolveTicker(symbolInput);
 
   const suffixesToTry = [`${bare}.NS`, `${bare}.BO`, bare];
 
