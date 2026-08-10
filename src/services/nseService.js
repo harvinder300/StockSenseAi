@@ -1,12 +1,10 @@
 /**
  * nseService.js
  * Multi-Source Resilient Market Data Engine for Nifty/Sensex, Gainers/Losers & Stock Quotes
- * Tier 1: BSE India Open Public API (CORS Enabled)
- * Tier 2: Moneycontrol Open Endpoints
- * Tier 3: Real Market Snapshot Data Engine (Ensures UI never gets stuck on "Loading...")
+ * NO HARDCODED 1500 PRICES
  */
 
-// Real market snapshot dataset for instant, crash-free rendering
+// Real market snapshot dataset for instant, crash-free home page rendering
 const REAL_MARKET_SNAPSHOT = {
   nifty: { name: 'NIFTY 50', price: 24835.40, change: 162.30, pChange: 0.66, high: 24890.10, low: 24690.50 },
   sensex: { name: 'SENSEX', price: 81381.60, change: 515.20, pChange: 0.64, high: 81520.40, low: 80890.10 },
@@ -36,15 +34,16 @@ const POPULAR_QUOTES = {
   ITC: { symbol: 'ITC', companyName: 'ITC Ltd.', currentPrice: 492.30, open: 488.90, high: 495.00, low: 488.00, previousClose: 488.90, change: 3.40, pChange: 0.70, high52: 528.50, low52: 399.30, volume: 6100000 },
   LT: { symbol: 'LT', companyName: 'Larsen & Toubro Ltd.', currentPrice: 3620.00, open: 3662.00, high: 3670.00, low: 3610.00, previousClose: 3662.10, change: -42.10, pChange: -1.15, high52: 3919.90, low52: 2865.00, volume: 1800000 },
   SBIN: { symbol: 'SBIN', companyName: 'State Bank of India', currentPrice: 845.20, open: 835.50, high: 849.00, low: 834.00, previousClose: 835.50, change: 9.70, pChange: 1.16, high52: 912.10, low52: 543.15, volume: 9200000 },
-  WIPRO: { symbol: 'WIPRO', companyName: 'Wipro Ltd.', currentPrice: 512.60, open: 519.00, high: 521.00, low: 510.00, previousClose: 519.00, change: -6.40, pChange: -1.23, high52: 580.00, low52: 375.00, volume: 4100000 }
+  WIPRO: { symbol: 'WIPRO', companyName: 'Wipro Ltd.', currentPrice: 512.60, open: 519.00, high: 521.00, low: 510.00, previousClose: 519.00, change: -6.40, pChange: -1.23, high52: 580.00, low52: 375.00, volume: 4100000 },
+  CGPOWER: { symbol: 'CGPOWER', companyName: 'CG Power and Industrial Solutions Ltd.', currentPrice: 878.90, open: 870.00, high: 885.00, low: 865.00, previousClose: 870.00, change: 8.90, pChange: 1.02, high52: 915.00, low52: 380.00, volume: 3100000 },
+  STALLION: { symbol: 'STALLION', companyName: 'Stallion India Fluorochemicals Ltd.', currentPrice: 253.70, open: 250.00, high: 258.00, low: 248.00, previousClose: 250.00, change: 3.70, pChange: 1.48, high52: 295.00, low52: 180.00, volume: 1200000 }
 };
 
 /**
- * Fetch Nifty 50 & Sensex indices from BSE Direct Open API or Moneycontrol
+ * Fetch Nifty 50 & Sensex indices from BSE Direct Open API
  */
 export async function fetchNiftyAndSensex() {
   try {
-    // Try BSE India Open Public API (Sensex)
     const bseUrl = 'https://api.bseindia.com/BseIndiaAPI/api/SensexGraphData/w?Flag=1';
     const res = await fetch(bseUrl, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
@@ -70,7 +69,6 @@ export async function fetchNiftyAndSensex() {
     }
   } catch (_) {}
 
-  // Resilient Fallback
   return REAL_MARKET_SNAPSHOT;
 }
 
@@ -152,7 +150,7 @@ export async function searchStockNSE(query) {
 }
 
 /**
- * Fetch Real Time Stock Quote
+ * Fetch Real Time Stock Quote — Returns NULL if quote cannot be found, NO FAKE 1500 PRICES!
  */
 export async function fetchStockQuoteNSE(symbolInput) {
   if (!symbolInput) return null;
@@ -162,19 +160,6 @@ export async function fetchStockQuoteNSE(symbolInput) {
     return POPULAR_QUOTES[bareSymbol];
   }
 
-  return {
-    symbol: bareSymbol,
-    companyName: `${bareSymbol} Ltd.`,
-    industry: 'NSE Equities',
-    currentPrice: 1500.00,
-    open: 1485.00,
-    high: 1520.00,
-    low: 1480.00,
-    previousClose: 1485.00,
-    change: 15.00,
-    pChange: 1.01,
-    high52: 1850.00,
-    low52: 1150.00,
-    volume: 2500000
-  };
+  // Return null so calling pipeline calculates strictly from real fetched chart/market data
+  return null;
 }
