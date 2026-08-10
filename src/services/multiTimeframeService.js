@@ -1,19 +1,18 @@
 /**
  * multiTimeframeService.js
- * Multi-Timeframe Analysis powered by Alpha Vantage & NSE Direct API
- * NO YAHOO FINANCE DEPENDENCY
+ * High-Speed Multi-Timeframe Analysis Engine
+ * NO UNNECESSARY NETWORK ROUNDTRIPS
  */
 import { RSI, MACD } from 'technicalindicators';
 import { calculateSignal } from '../utils/signals';
-import { fetchChartDataAlphaVantage } from './alphaVantageService';
+import { fetchOHLCV } from './stockSearchService';
 
-export async function fetchChartData(symbolInput, interval = '1d', range = '3mo') {
+export async function fetchChartData(symbolInput) {
   try {
-    const alphaKey = localStorage.getItem('alphavantage_api_key') || null;
-    const { candles } = await fetchChartDataAlphaVantage(symbolInput, alphaKey);
-    return { candles, meta: { symbol: symbolInput } };
+    const res = await fetchOHLCV(symbolInput);
+    return { candles: res?.candles || [], meta: res?.meta || null };
   } catch (_) {
-    return { candles: [], meta: { symbol: symbolInput } };
+    return { candles: [], meta: null };
   }
 }
 
@@ -131,7 +130,9 @@ export function getAgreementScore(weekly, daily, hourly) {
 
 export async function fetchMultiTimeframeData(symbolInput, alphaKey = null) {
   try {
-    const { candles: dailyCandles, isLimitReached } = await fetchChartDataAlphaVantage(symbolInput, alphaKey);
+    const ohlcvRes = await fetchOHLCV(symbolInput, alphaKey);
+    const dailyCandles = ohlcvRes?.candles || [];
+    const isLimitReached = ohlcvRes?.isLimitReached || false;
 
     if (!dailyCandles || dailyCandles.length === 0) {
       return { daily: analyzeTimeframe([]), rawCandles: {}, isLimitReached };
@@ -139,7 +140,7 @@ export async function fetchMultiTimeframeData(symbolInput, alphaKey = null) {
 
     const daily = analyzeTimeframe(dailyCandles, 'Daily');
 
-    // Aggregate daily candles into weekly candles
+    // Aggregate daily candles into weekly candles in memory
     const weeklyCandles = [];
     for (let i = 0; i < dailyCandles.length; i += 5) {
       const chunk = dailyCandles.slice(i, i + 5);
