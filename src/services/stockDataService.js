@@ -6,7 +6,7 @@
 import { POPULAR_STOCKS } from '../data/indianStocks';
 import { calculateRSI, calculateMACD, detectPatterns, calculateConfidenceScore } from './technicalIndicators';
 import { analyzeFundamentalWithGemini } from './geminiService';
-import { fetchOHLCV } from './stockSearchService';
+import { fetchOHLCV, resolveTicker } from './stockSearchService';
 import { fetchMultiTimeframeData } from './multiTimeframeService';
 import { fetchFundamentals } from './fundamentalService';
 import { fetchStockQuoteNSE } from './nseService';
@@ -14,7 +14,7 @@ import { calculateSignal } from '../utils/signals';
 import { calculateEntryPoint } from '../utils/entryScoring';
 
 export async function getFullStockAnalysis(symbolInput, geminiApiKey = null, alphaKey = null) {
-  const bareSymbol = symbolInput.trim().toUpperCase().replace(/\.(NS|BO|BSE|NSE)$/i, '');
+  const bareSymbol = resolveTicker(symbolInput);
 
   // Step 1: Fetch NSE Real-Time Quote + Alpha Vantage OHLCV + Fundamentals in parallel
   const [nseQuote, chartResult, multiData, fundamentalsRes] = await Promise.all([
@@ -93,7 +93,7 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null, alp
 
   const meta = {
     symbol: bareSymbol,
-    name: nseQuote?.companyName || localMeta?.name || `${bareSymbol} Ltd.`,
+    name: nseQuote?.companyName || localMeta?.name || chartResult?.meta?.name || `${bareSymbol} Ltd.`,
     sector: nseQuote?.industry || localMeta?.sector || 'NSE Equities',
     price: nseQuote?.currentPrice || lastPrice,
     change: nseQuote?.change || 0,

@@ -1,11 +1,10 @@
 /**
  * StockSearchInput.jsx
- * Reusable live Yahoo Finance stock search input.
- * Used by both AnalyserPage and ComparePage.
+ * Reusable Live Stock Search input with automated company name ticker resolution
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { searchStocks } from '../services/stockSearchService';
-import { isValidStockSymbol, stripHtml, rateLimiter } from '../utils/security';
+import { searchStocks, resolveTicker } from '../services/stockSearchService';
+import { stripHtml, rateLimiter } from '../utils/security';
 import { Search, AlertTriangle } from 'lucide-react';
 
 function useDebounce(value, delay) {
@@ -17,51 +16,23 @@ function useDebounce(value, delay) {
   return debounced;
 }
 
-/** Highlights matching substring in blue */
-function HighlightText({ text, query }) {
-  if (!query || query.length < 1) return <>{text}</>;
-  const idx = text.toLowerCase().indexOf(query.toLowerCase());
-  if (idx === -1) return <>{text}</>;
-  return (
-    <>
-      {text.slice(0, idx)}
-      <span style={{ color: '#00d4ff', fontWeight: 700 }}>{text.slice(idx, idx + query.length)}</span>
-      {text.slice(idx + query.length)}
-    </>
-  );
-}
-
-/**
- * Props:
- *   placeholder  - string, e.g. "Search first stock..."
- *   onSelect     - callback(symbol: string, name: string)
- *   defaultValue - initial display text (optional)
- */
 export default function StockSearchInput({ placeholder = 'Search stock...', onSelect, defaultValue = '' }) {
-  const [inputText,     setInputText]     = useState(defaultValue);
+  const [inputText, setInputText] = useState(defaultValue);
   const [searchResults, setSearchResults] = useState([]);
-  const [showDropdown,  setShowDropdown]  = useState(false);
-  const [searching,     setSearching]     = useState(false);
-  const [inputError,    setInputError]    = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [inputError, setInputError] = useState('');
   const wrapRef = useRef(null);
 
-  const debouncedInput = useDebounce(inputText, 400);
+  const debouncedInput = useDebounce(inputText, 300);
 
-  // Live Yahoo Finance search as user types
   useEffect(() => {
     if (!debouncedInput || debouncedInput.trim().length < 1) {
       setSearchResults([]);
       setInputError('');
       return;
     }
-    // Validate input before making API call
-    if (!isValidStockSymbol(debouncedInput)) {
-      setSearchResults([]);
-      setInputError('Invalid characters detected — only letters, numbers, dots allowed');
-      setSearching(false);
-      return;
-    }
-    // Rate limit check
+
     if (!rateLimiter.isAllowed()) {
       setInputError('Too many requests. Please wait a moment.');
       setSearching(false);
@@ -70,14 +41,15 @@ export default function StockSearchInput({ placeholder = 'Search stock...', onSe
     setInputError('');
     let cancelled = false;
     setSearching(true);
+
     searchStocks(debouncedInput)
-      .then(results  => { if (!cancelled) setSearchResults(results); })
-      .catch(()      => { if (!cancelled) setInputError('Something went wrong. Try again.'); })
-      .finally(()    => { if (!cancelled) setSearching(false); });
+      .then(results => { if (!cancelled) setSearchResults(results); })
+      .catch(() => { if (!cancelled) setInputError('Something went wrong. Try again.'); })
+      .finally(() => { if (!cancelled) setSearching(false); });
+
     return () => { cancelled = true; };
   }, [debouncedInput]);
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handler = (e) => { if (!wrapRef.current?.contains(e.target)) setShowDropdown(false); };
     document.addEventListener('mousedown', handler);
@@ -85,28 +57,25 @@ export default function StockSearchInput({ placeholder = 'Search stock...', onSe
   }, []);
 
   const handleSelect = (r) => {
-    const display = stripHtml(r.name || r.symbol.replace(/\.(NS|BO)$/i, ''));
+    const cleanSym = resolveTicker(r.symbol);
+    const display = stripHtml(r.name || cleanSym);
     setInputText(display);
     setShowDropdown(false);
     setSearchResults([]);
     setInputError('');
-    onSelect?.(stripHtml(r.symbol), display, stripHtml(r.exchange));
+    onSelect?.(cleanSym, display, stripHtml(r.exchange || 'NSE'));
   };
 
   const handleSubmit = (e) => {
     e?.preventDefault();
-    const raw = inputText.trim().toUpperCase();
+    const raw = inputText.trim();
     if (!raw) return;
-    if (!isValidStockSymbol(raw)) {
-      setInputError('Invalid characters detected — only letters, numbers, dots allowed');
-      return;
-    }
+
     setInputError('');
-    const sym = raw.includes('.') ? raw : `${raw}.NS`;
-    const display = raw.replace(/\.(NS|BO)$/i, '');
-    setInputText(display);
+    const resolvedSym = resolveTicker(raw);
+    setInputText(raw);
     setShowDropdown(false);
-    onSelect?.(sym, display, 'NSE');
+    onSelect?.(resolvedSym, raw, 'NSE');
   };
 
   return (
@@ -119,7 +88,7 @@ export default function StockSearchInput({ placeholder = 'Search stock...', onSe
             type="text"
             value={inputText}
             placeholder={placeholder}
-            maxLength={50}
+            maxLength={60}
             onChange={(e) => { setInputText(e.target.value); setShowDropdown(true); }}
             onFocus={() => setShowDropdown(true)}
             style={{ paddingRight: 100 }}
@@ -131,7 +100,6 @@ export default function StockSearchInput({ placeholder = 'Search stock...', onSe
         {showDropdown && inputText.length >= 1 && (
           <div className="ss-suggestions">
 
-            {/* Validation error */}
             {inputError && (
               <div style={{ padding: '13px 16px', color: '#ff4757', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <AlertTriangle size={14} style={{ flexShrink: 0 }} />
@@ -139,36 +107,30 @@ export default function StockSearchInput({ placeholder = 'Search stock...', onSe
               </div>
             )}
 
-            {/* Searching spinner */}
             {!inputError && searching && (
               <div style={{ padding: '13px 16px', color: '#8892a4', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ width: 13, height: 13, border: '2px solid #00d4ff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
-                Searching NSE Direct API…
+                Searching NSE/BSE Equities…
               </div>
             )}
 
-            {/* No results */}
             {!inputError && !searching && searchResults.length === 0 && inputText.length >= 2 && (
               <div style={{ padding: '13px 16px', color: '#8892a4', fontSize: 13 }}>
-                No results found — try a different name or ticker
+                Press Search or Enter to analyze "{inputText}"
               </div>
             )}
 
-            {/* Results list with match highlighting */}
             {!inputError && searchResults.map((r) => {
               const ticker = stripHtml(r.symbol.replace(/\.(NS|BO)$/i, ''));
-              const name   = stripHtml(r.name);
+              const name = stripHtml(r.name);
+              const exch = stripHtml(r.exchange || 'NSE');
               return (
-                <div key={r.symbol} className="ss-suggestion-item" onClick={() => handleSelect(r)}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexWrap: 'wrap' }}>
-                    <span className="ss-suggestion-sym">
-                      <HighlightText text={ticker} query={inputText.trim()} />
-                    </span>
-                    <span className="ss-suggestion-name">
-                      <HighlightText text={name} query={inputText.trim()} />
-                    </span>
+                <div key={`${r.symbol}-${exch}`} className="ss-suggestion-item" onClick={() => handleSelect(r)}>
+                  <div>
+                    <span style={{ fontWeight: 800, color: '#fff', fontSize: 14 }}>{ticker}</span>
+                    <span style={{ marginLeft: 8, fontSize: 12, color: '#8892a4' }}>{name}</span>
                   </div>
-                  <span className="ss-badge ss-badge-blue" style={{ fontSize: 10, flexShrink: 0 }}>{stripHtml(r.exchange)}</span>
+                  <span className="ss-badge ss-badge-blue" style={{ fontSize: 10 }}>{exch}</span>
                 </div>
               );
             })}
@@ -178,4 +140,3 @@ export default function StockSearchInput({ placeholder = 'Search stock...', onSe
     </div>
   );
 }
-
