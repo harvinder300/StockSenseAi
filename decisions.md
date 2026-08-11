@@ -4,20 +4,23 @@ This document logs key technical and architectural decisions, rationale, design 
 
 ---
 
-## 1. Data Layer: Purging Yahoo Finance v10 API & Replacing with Multi-Source Resilient Data Engine
+## 1. Data Layer: Option C — Stooq.com (Unlimited Charts) + Twelve Data (800/day Quotes)
 
 ### ❌ Problem
-Yahoo Finance's `quoteSummary` v10 endpoints (`query1.finance.yahoo.com/v10/finance/quoteSummary`) started enforcing strict HTTP 401 Unauthorized authentication blocks across all browser and proxy environments. Reliance on a single endpoint caused total app breakage.
+Alpha Vantage enforced an extremely restrictive rate limit of **25 calls per day**, which exhausted within minutes during basic testing and broke charts for all users. Direct browser requests to `nseindia.com` were blocked due to missing WAF session cookies.
 
-### 💡 Decision & Approach
-Replaced the data pipeline with a **Multi-Source Resilient Market Data Engine**:
-1. **NSE Direct API (`www.nseindia.com/api/allIndices` & `live-analysis-variations`)**: Primary source for NIFTY 50, SENSEX, and top 5 gaining/losing stocks.
-2. **BSE India Open API (`api.bseindia.com/BseIndiaAPI/api/`)**: Secondary open CORS-enabled endpoint for benchmark index graph data and market movers.
-3. **Yahoo Finance Public Chart v8 API (`v8/finance/chart/{SYMBOL}?range=6mo&interval=1d`)**: Provides unblocked daily OHLCV candlestick time series, 52-week highs/lows, and market quotes.
-4. **Alpha Vantage API (`TIME_SERIES_DAILY` & `OVERVIEW`)**: Secondary provider for detailed company overview metrics and charts.
+### 💡 Decision & Approach (Option C)
+Implemented a high-capacity dual data layer combining **Stooq.com** and **Twelve Data**:
+1. **Stooq.com (`https://stooq.com/q/d/l/?s={symbol}.in&i=d`)**: Primary historical chart data provider.
+   - **100% Free & Unlimited Calls** with zero API key requirements.
+   - Returns clean CSV data (`Date,Open,High,Low,Close,Volume`) for all Indian equities (`.in` format).
+   - Parsed cleanly via `stooqService.js`.
+2. **Twelve Data API (`api.twelvedata.com`)**: Primary provider for real-time stock quotes, P/E, moving averages, and 52-week statistics.
+   - **800 Free API calls per day** (32x higher than Alpha Vantage).
+3. **BSE Open API & Yahoo v8 Chart API**: Secondary backup providers for benchmark indices and live quotes.
 
 ### 🔍 Why This Approach?
-Using a multi-source fallback system guarantees high availability. If one provider experiences rate limits or CORS restrictions, the system failovers smoothly without breaking the UI.
+Eliminates API rate limit banners completely. Users can view unlimited 3-month/6-month candlestick charts without ever hitting a daily limit.
 
 ---
 
@@ -109,13 +112,13 @@ Purged all synthetic generators (`generateMarketCandles` & `getFallbackOverview`
 
 ---
 
-## 8. Dual API Key Management (Google Gemini + Alpha Vantage)
+## 8. Dual API Key Management (Google Gemini + Twelve Data)
 
 ### 💡 Decision & Approach
-Updated `src/components/GeminiKeyModal.jsx` to manage both:
+Updated `src/components/GeminiKeyModal.jsx` to manage:
 1. **Google Gemini Key** (`aistudio.google.com`) for Hinglish AI investment advisory.
-2. **Alpha Vantage Key** (`alphavantage.co`) for daily candle time series and overview metrics.
-- Added live visual status indicators (🟢 AI Analysis Active / 🟡 Demo Advisory).
+2. **Twelve Data Key** (`twelvedata.com`) for real-time quotes (800 calls/day free).
+- Added live visual status indicators (🟢 Charts: Active & Unlimited Stooq.com / 🟢 Quotes: Active Twelve Data).
 
 ---
 

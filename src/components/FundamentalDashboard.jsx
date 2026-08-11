@@ -282,7 +282,7 @@ export default function FundamentalDashboard({ fundamentals, meta }) {
 
       {/* Data Source Footer Notice */}
       <div style={{ textAlign: 'center', fontSize: 11, color: '#8892a4', paddingTop: 8 }}>
-        Data: Alpha Vantage & NSE Direct API | Updated: Daily
+        Data: Stooq.com & Twelve Data | Updated: Live Market Feed
       </div>
 
     </div>

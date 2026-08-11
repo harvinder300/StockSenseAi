@@ -48,7 +48,7 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
       <div className="ss-card" style={{ padding: '32px', marginBottom: 24 }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(0,212,255,0.1)', color: '#00d4ff', padding: '4px 14px', borderRadius: 99, fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
-            <Award size={14} /> NSE &amp; Alpha Vantage Data Engine
+            <Award size={14} /> Stooq &amp; Twelve Data Engine (Unlimited Charts)
           </div>
           <h1 style={{ fontFamily: 'Poppins,sans-serif', fontSize: 28, fontWeight: 900, color: '#fff', marginBottom: 6 }}>
             Fundamental <span style={{ color: '#00d4ff' }}>Stock Analyser</span>

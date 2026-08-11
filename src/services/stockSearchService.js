@@ -1,11 +1,13 @@
 /**
  * stockSearchService.js
- * Ultra-Fast High-Speed Parallel Market Data Fetcher & Chart Parser
- * Supports Symbol Resolution for Gland Pharma (GLAND), CG Power (CGPOWER), Stallion (STALLION), Reliance (RELIANCE), etc.
+ * High-Speed Market Data Fetcher & Chart Parser
+ * Primary Chart Source: Stooq.com (100% Free Unlimited CSV Charts for Indian Stocks)
+ * Secondary Sources: Yahoo v8 Public Chart & Twelve Data API
  */
 
 import { stripHtml } from '../utils/security';
-import { fetchChartDataAlphaVantage } from './alphaVantageService';
+import { fetchChartDataStooq } from './stooqService';
+import { fetchQuoteTwelveData } from './twelveDataService';
 import { COMPANY_NAME_MAP, POPULAR_STOCKS } from '../data/indianStocks';
 
 const CORS_PROXIES = [
@@ -14,11 +16,11 @@ const CORS_PROXIES = [
 ];
 
 /**
- * Resolves full company names or input strings into exact NSE tickers (e.g. "Gland Pharma Limited" -> "GLAND")
+ * Resolves company names or input strings into exact tickers (e.g. "Gland Pharma Limited" -> "GLAND")
  */
 export function resolveTicker(input) {
   if (!input) return 'RELIANCE';
-  const clean = input.trim().toUpperCase().replace(/\.(NS|BO|BSE|NSE)$/i, '');
+  const clean = input.trim().toUpperCase().replace(/\.(NS|BO|BSE|NSE|IN)$/i, '');
 
   if (COMPANY_NAME_MAP[clean]) {
     return COMPANY_NAME_MAP[clean];
@@ -38,7 +40,7 @@ export function resolveTicker(input) {
 }
 
 /**
- * Ultra-fast fetcher racing direct fetch & proxies concurrently
+ * Fast proxy racing fetcher
  */
 export async function fetchWithProxy(urlStr, options = {}) {
   const urlsToTry = [urlStr];
@@ -121,7 +123,6 @@ export async function searchStocks(query) {
   if (!query || query.trim().length < 1) return [];
   const clean = query.trim();
 
-  // Local dictionary search first for instant sub-10ms response
   const resolvedSym = resolveTicker(clean);
   const localMatch = POPULAR_STOCKS.find(s => s.symbol === resolvedSym);
 
@@ -152,7 +153,6 @@ export async function searchStocks(query) {
       .slice(0, 8);
 
     if (results.length > 0) {
-      // Merge local match at top if available
       const merged = [...localResults];
       results.forEach(r => {
         if (!merged.some(m => m.symbol.replace(/\.(NS|BO)$/i, '') === r.symbol.replace(/\.(NS|BO)$/i, ''))) {
@@ -173,14 +173,52 @@ export async function searchStocks(query) {
 }
 
 /**
- * Fetches REAL market price and REAL OHLCV candles ultra-fast
+ * Fetches REAL market price and REAL OHLCV candles
+ * Primary Source: Stooq.com (100% Free & Unlimited Chart Data)
+ * Secondary Sources: Twelve Data / Yahoo Public Chart v8
  */
-export async function fetchOHLCV(symbolInput, alphaKey = null) {
+export async function fetchOHLCV(symbolInput, twelveKey = null) {
   if (!symbolInput) return null;
   const bare = resolveTicker(symbolInput);
 
-  const suffixesToTry = [`${bare}.NS`, `${bare}.BO`, bare];
+  // 1. Try Stooq.com (Unlimited Free Chart Data)
+  try {
+    const { candles } = await fetchChartDataStooq(bare);
+    if (candles && candles.length > 0) {
+      const lastCandle = candles[candles.length - 1];
+      const prevCandle = candles[candles.length - 2] || lastCandle;
 
+      const realPrice = lastCandle.close;
+      const prevClose = prevCandle.close;
+      const change = +(realPrice - prevClose).toFixed(2);
+      const pChange = +(((realPrice - prevClose) / (prevClose || 1)) * 100).toFixed(2);
+
+      const high52 = Math.max(...candles.map(c => c.high));
+      const low52 = Math.min(...candles.map(c => c.low));
+
+      const localMeta = POPULAR_STOCKS.find(s => s.symbol === bare);
+
+      return {
+        candles,
+        meta: {
+          symbol: bare,
+          fullName: `${bare}.NSE`,
+          name: localMeta?.name || `${bare} Ltd.`,
+          exchange: 'NSE',
+          price: realPrice,
+          change,
+          pChange,
+          high52: +high52.toFixed(2),
+          low52: +low52.toFixed(2),
+          currency: 'INR',
+        },
+        isLimitReached: false
+      };
+    }
+  } catch (_) {}
+
+  // 2. Secondary Source: Yahoo Finance v8 Public Chart
+  const suffixesToTry = [`${bare}.NS`, `${bare}.BO`, bare];
   for (const sym of suffixesToTry) {
     try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?range=6mo&interval=1d&includePrePost=false&_=${Date.now()}`;
@@ -223,31 +261,25 @@ export async function fetchOHLCV(symbolInput, alphaKey = null) {
     } catch (_) {}
   }
 
-  // Alpha Vantage API fallback if needed
+  // 3. Tertiary Source: Twelve Data API
   try {
-    const { candles, isLimitReached } = await fetchChartDataAlphaVantage(bare, alphaKey);
-    if (candles && candles.length > 0) {
-      const lastCandle = candles[candles.length - 1];
-      const prevCandle = candles[candles.length - 2] || lastCandle;
-      const realPrice = lastCandle.close;
-      const change = +(realPrice - prevCandle.close).toFixed(2);
-      const pChange = +(((realPrice - prevCandle.close) / (prevCandle.close || 1)) * 100).toFixed(2);
-
+    const twelveQuote = await fetchQuoteTwelveData(bare, twelveKey);
+    if (twelveQuote) {
       return {
-        candles,
+        candles: [],
         meta: {
           symbol: bare,
           fullName: `${bare}.NSE`,
-          name: `${bare} Ltd.`,
+          name: twelveQuote.companyName,
           exchange: 'NSE',
-          price: realPrice,
-          change,
-          pChange,
-          high52: +(Math.max(...candles.map(c => c.high))).toFixed(2),
-          low52: +(Math.min(...candles.map(c => c.low))).toFixed(2),
+          price: twelveQuote.currentPrice,
+          change: twelveQuote.change,
+          pChange: twelveQuote.pChange,
+          high52: twelveQuote.high52,
+          low52: twelveQuote.low52,
           currency: 'INR'
         },
-        isLimitReached
+        isLimitReached: false
       };
     }
   } catch (_) {}

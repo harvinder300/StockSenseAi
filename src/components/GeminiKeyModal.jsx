@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { X, Key, ShieldCheck, Sparkles, Check, Trash2, ExternalLink, Activity, Layers } from 'lucide-react';
+import { X, Key, ShieldCheck, Sparkles, Check, Trash2, ExternalLink, Layers, Activity } from 'lucide-react';
 
 export default function GeminiKeyModal({ isOpen, onClose, apiKey, onSaveKey, onClearKey }) {
   const [geminiKey, setGeminiKey] = useState(apiKey || '');
-  const [alphaKey, setAlphaKey] = useState(localStorage.getItem('alphavantage_api_key') || '');
+  const [twelveKey, setTwelveKey] = useState(localStorage.getItem('twelvedata_api_key') || '');
   const [saved, setSaved] = useState(false);
 
   if (!isOpen) return null;
@@ -11,17 +11,17 @@ export default function GeminiKeyModal({ isOpen, onClose, apiKey, onSaveKey, onC
   const handleSave = (e) => {
     e.preventDefault();
     onSaveKey(geminiKey.trim());
-    if (alphaKey.trim()) {
-      localStorage.setItem('alphavantage_api_key', alphaKey.trim());
+    if (twelveKey.trim()) {
+      localStorage.setItem('twelvedata_api_key', twelveKey.trim());
     } else {
-      localStorage.removeItem('alphavantage_api_key');
+      localStorage.removeItem('twelvedata_api_key');
     }
     setSaved(true);
     setTimeout(() => { setSaved(false); onClose(); }, 700);
   };
 
   const hasGemini = Boolean(geminiKey && geminiKey.trim().length > 5);
-  const hasAlpha = Boolean(alphaKey && alphaKey.trim().length > 5);
+  const hasTwelve = Boolean(twelveKey && twelveKey.trim().length > 5);
 
   return (
     <div className="ss-modal-overlay" onClick={onClose}>
@@ -35,31 +35,40 @@ export default function GeminiKeyModal({ isOpen, onClose, apiKey, onSaveKey, onC
           <div className="ss-gemini-icon"><Sparkles size={20} /></div>
           <div>
             <div className="ss-gemini-title">API Settings &amp; Keys</div>
-            <div className="ss-gemini-sub">Configure Gemini AI &amp; Alpha Vantage live stock data</div>
+            <div className="ss-gemini-sub">Configure Gemini AI &amp; Twelve Data live stock data</div>
           </div>
         </div>
 
         {/* Live Status Indicators */}
         <div style={{ background: '#151c2e', padding: '14px 16px', borderRadius: 10, marginBottom: 20, border: '1px solid rgba(255,255,255,0.06)' }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase', marginBottom: 8 }}>
-            API Status Indicators:
+            Data Engine Status Indicators:
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#c8d0e0' }}>
+                <Layers size={14} color="#00ff88" /> Stock Charts Engine:
+              </span>
+              <span style={{ color: '#00ff88', fontWeight: 700 }}>
+                🟢 Active &amp; Unlimited (Stooq.com Free)
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#c8d0e0' }}>
+                <Activity size={14} color="#a78bfa" /> Live Quotes &amp; Fundamentals:
+              </span>
+              <span style={{ color: hasTwelve ? '#00ff88' : '#00d4ff', fontWeight: 700 }}>
+                {hasTwelve ? '🟢 Twelve Data Key Active (800/day)' : '🟢 Open Market Data Engine'}
+              </span>
+            </div>
+
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#c8d0e0' }}>
                 <Sparkles size={14} color="#00d4ff" /> Gemini AI Engine:
               </span>
               <span style={{ color: hasGemini ? '#00ff88' : '#ffd700', fontWeight: 700 }}>
                 {hasGemini ? '🟢 AI Analysis Active (Gemini)' : '🟡 Demo Built-in Advisory'}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#c8d0e0' }}>
-                <Layers size={14} color="#a78bfa" /> Stock Charts &amp; Fundamentals:
-              </span>
-              <span style={{ color: hasAlpha ? '#00ff88' : '#ff4757', fontWeight: 700 }}>
-                {hasAlpha ? '🟢 Stock Data Active (Alpha Vantage)' : '🔴 Add Alpha Vantage Key'}
               </span>
             </div>
           </div>
@@ -87,11 +96,11 @@ export default function GeminiKeyModal({ isOpen, onClose, apiKey, onSaveKey, onC
             </div>
           </div>
 
-          {/* 2. Alpha Vantage API Key Input */}
+          {/* 2. Twelve Data API Key Input */}
           <div style={{ marginBottom: 18 }}>
             <div className="ss-form-label">
-              <span>2. Alpha Vantage Key (Charts &amp; Fundamentals — Free 25/day)</span>
-              <a href="https://www.alphavantage.co/support/#api-key" target="_blank" rel="noreferrer">
+              <span>2. Twelve Data Key (Optional — Free 800 calls/day)</span>
+              <a href="https://twelvedata.com/" target="_blank" rel="noreferrer">
                 Get Free Key <ExternalLink size={11} />
               </a>
             </div>
@@ -100,31 +109,31 @@ export default function GeminiKeyModal({ isOpen, onClose, apiKey, onSaveKey, onC
               <input
                 className="ss-key-input"
                 type="password"
-                value={alphaKey}
-                onChange={(e) => setAlphaKey(e.target.value)}
-                placeholder="Key e.g. demo or your key..."
+                value={twelveKey}
+                onChange={(e) => setTwelveKey(e.target.value)}
+                placeholder="Twelve Data API Key..."
               />
             </div>
           </div>
 
           <div className="ss-privacy-note">
             <ShieldCheck size={15} />
-            <p><strong>Privacy:</strong> Keys are stored safely in browser localStorage. Real-time Nifty, Sensex, Quotes &amp; Search run on NSE Direct API.</p>
+            <p><strong>Privacy:</strong> Keys are stored safely in browser localStorage. Stooq.com provides unlimited free historical charts for Indian equities.</p>
           </div>
 
           <div className="ss-gemini-actions" style={{ marginTop: 20 }}>
             <button type="submit" className="ss-gemini-save">
               {saved ? <><Check size={16} /> Saved Keys!</> : 'Save & Enable Keys'}
             </button>
-            {(apiKey || localStorage.getItem('alphavantage_api_key')) && (
+            {(apiKey || localStorage.getItem('twelvedata_api_key')) && (
               <button
                 type="button"
                 className="ss-gemini-clear"
                 onClick={() => {
                   setGeminiKey('');
-                  setAlphaKey('');
+                  setTwelveKey('');
                   onClearKey();
-                  localStorage.removeItem('alphavantage_api_key');
+                  localStorage.removeItem('twelvedata_api_key');
                 }}
                 title="Remove keys"
               >
