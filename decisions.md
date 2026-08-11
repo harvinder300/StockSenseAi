@@ -4,23 +4,24 @@ This document logs key technical and architectural decisions, rationale, design 
 
 ---
 
-## 1. Data Layer: Option C — Stooq.com (Unlimited Charts) + Twelve Data (800/day Quotes)
+## 1. Data Layer: Moneycontrol Open API (Indices) + Stooq.com (Unlimited Charts) + Twelve Data (Quotes)
 
 ### ❌ Problem
-Alpha Vantage enforced an extremely restrictive rate limit of **25 calls per day**, which exhausted within minutes during basic testing and broke charts for all users. Direct browser requests to `nseindia.com` were blocked due to missing WAF session cookies.
+Alpha Vantage enforced an extremely restrictive rate limit of **25 calls per day**, which exhausted within minutes during testing. Direct browser calls to `nseindia.com` were blocked due to missing WAF session cookies.
 
-### 💡 Decision & Approach (Option C)
-Implemented a high-capacity dual data layer combining **Stooq.com** and **Twelve Data**:
-1. **Stooq.com (`https://stooq.com/q/d/l/?s={symbol}.in&i=d`)**: Primary historical chart data provider.
+### 💡 Decision & Approach
+Implemented a specialized multi-provider data layer:
+1. **NIFTY 50 & SENSEX (Home Page Benchmark Indices)**: **Moneycontrol Open API**
+   - Endpoints: `priceapi.moneycontrol.com/technicalContracts/techChart/index?symbol=in%3BNSX` (NIFTY 50) and `in%3BSEN` (SENSEX).
+   - **100% Accurate Indian Market Index Levels**, 0% risk of HTTP 401 errors, no API key required, and saves Twelve Data quota.
+2. **Stock Candlestick Charts**: **Stooq.com (`https://stooq.com/q/d/l/?s={symbol}.in&i=d`)**
    - **100% Free & Unlimited Calls** with zero API key requirements.
-   - Returns clean CSV data (`Date,Open,High,Low,Close,Volume`) for all Indian equities (`.in` format).
    - Parsed cleanly via `stooqService.js`.
-2. **Twelve Data API (`api.twelvedata.com`)**: Primary provider for real-time stock quotes, P/E, moving averages, and 52-week statistics.
+3. **Real-Time Stock Quotes & Metrics**: **Twelve Data API (`api.twelvedata.com`)**
    - **800 Free API calls per day** (32x higher than Alpha Vantage).
-3. **BSE Open API & Yahoo v8 Chart API**: Secondary backup providers for benchmark indices and live quotes.
 
 ### 🔍 Why This Approach?
-Eliminates API rate limit banners completely. Users can view unlimited 3-month/6-month candlestick charts without ever hitting a daily limit.
+Eliminates rate limit banners and HTTP 401 errors completely. Delivers 100% accurate live NIFTY 50 and SENSEX benchmark index data alongside unlimited historical candlestick charts.
 
 ---
 

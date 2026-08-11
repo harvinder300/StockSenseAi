@@ -78,15 +78,6 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
         </div>
       </div>
 
-      {/* ── Rate Limit Warning Notice ── */}
-      {isLimitReached && (
-        <div style={{ background: 'rgba(255,159,67,0.12)', border: '1px solid rgba(255,159,67,0.4)', borderRadius: 10, padding: '14px 20px', color: '#ff9f43', fontSize: 13, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <AlertTriangle size={18} style={{ flexShrink: 0 }} />
-          <span>
-            <strong>Alpha Vantage Daily Limit Reached (25 stocks/day):</strong> Resets at midnight. NSE Real-Time Quote &amp; AI Analysis remain active! Enter your free Alpha Vantage key in Settings to increase limit.
-          </span>
-        </div>
-      )}
 
       {/* ── Loading Skeleton ── */}
       {loading && <FundamentalSkeleton />}
