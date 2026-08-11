@@ -134,3 +134,60 @@ Vercel builds failed due to npm 7+ peer dependency resolution errors (`ERESOLVE`
 1. Created `.npmrc` with `legacy-peer-deps=true`.
 2. Added `"installCommand": "npm install --legacy-peer-deps"` in `vercel.json`.
 3. Purged unused `@react-spring/three` package from `package.json`.
+
+---
+
+# Session Changelog (Timestamped)
+
+Each entry records the user's query, the root cause identified, the decision made, and the commit.
+
+---
+
+## 📅 2026-08-10 (Session 1)
+
+### 21:06 IST — User Query: "Yahoo Finance API is completely blocked returning 401 for all calls"
+- **Root Cause**: Yahoo Finance v10 `quoteSummary` endpoint enforced strict cookie/crumb authentication.
+- **Decision**: Replace entire data layer with NSE Direct API + Alpha Vantage + Yahoo v8 Chart API.
+- **Commit**: `f7b2dd1` → `8e796f4`
+
+### 21:35 IST — User Query: "data for all the stocks is not right, price is saying 1500 but actual is 253"
+- **Root Cause**: Alpha Vantage rate limit hit → synthetic `generateMarketCandles` fallback generating fake ₹1,500 prices.
+- **Decision**: Purge all synthetic data generators. Only display real market data or clean error states.
+- **Commit**: `8e796f4` → `740689d`
+
+### 21:50 IST — User Query: "Market Mood Index is neutral — is it static or dynamic?"
+- **Root Cause**: Mood formula `advances / (advances + declines)` = `5 / 10` = always 50 (Neutral).
+- **Decision**: Replaced with dynamic formula incorporating live Nifty % change, Sensex % change, and market breadth.
+- **Commit**: `740689d`
+
+### 22:07 IST — User Query: "It is not able to fetch some stocks like Gland Pharma Limited"
+- **Root Cause**: Full company names ("GLAND PHARMA LTD.") were sent directly as API tickers, causing 404 errors.
+- **Decision**: Created `resolveTicker()` and `COMPANY_NAME_MAP` for automated name-to-ticker resolution.
+- **Commit**: `1159097` → `d0cae21`
+
+---
+
+## 📅 2026-08-11 (Session 2)
+
+### 22:48 IST — User Query: "NSE Direct API browser se directly call nahi hoti — discuss best approach"
+- **Root Cause**: NSE website requires session cookies (WAF). Alpha Vantage only 25 calls/day. Not sustainable.
+- **Decision**: Adopted **Option C** — Stooq.com (unlimited free charts) + Twelve Data (800/day quotes) + BSE/Yahoo for indices.
+- **Commit**: `e271633`
+
+### 23:06 IST — User Query: "For stocks use Twelve Data, for Nifty/Sensex use Moneycontrol — explain architecture"
+- **Root Cause**: Needed clear separation of data providers to optimize API quota usage.
+- **Decision**: Confirmed Option C architecture. Moneycontrol for indices, Stooq for charts, Twelve Data for quotes.
+- **Commit**: `a64535b`
+
+### 23:11 IST — User Query: "Why still showing Alpha Vantage? Chart is coming. Nifty/Sensex data still wrong."
+- **Root Cause 1**: Old leftover `"Alpha Vantage Daily Limit Reached"` banner HTML was still in `AnalyserPage.jsx`.
+- **Root Cause 2**: Moneycontrol API was **CORS-blocked** from browser, silently falling back to hardcoded snapshot.
+- **Root Cause 3**: Stock header prices came from hardcoded `POPULAR_QUOTES` dictionary, not real data.
+- **Decision**: Removed Alpha Vantage banner. Replaced Moneycontrol with Yahoo v8 `^NSEI`/`^BSESN` via CORS proxy racing. Prioritized `chartResult.meta.price` over hardcoded values.
+- **Commit**: `2ec9210`
+
+### 23:21 IST — User Query: "STALLION actual -5.00% but app shows +44.13%. CGPOWER actual +0.23% but app shows +28.5%."
+- **Root Cause**: Daily change was computed from Stooq's last 2 historical candles. Stooq historical data may have gaps or not include today's session, causing change to be calculated across days/weeks instead of today's actual change.
+- **Decision**: Fetch Stooq charts + Twelve Data real-time quote **in parallel** via `Promise.allSettled`. Use Twelve Data's real `change` and `percent_change` for the header. Fall back to Stooq candle diff only if Twelve Data is unavailable.
+- **Files Changed**: `src/services/stockSearchService.js` (fetchOHLCV), `decisions.md`
+- **Commit**: (this commit)

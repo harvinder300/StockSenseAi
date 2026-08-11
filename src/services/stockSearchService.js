@@ -181,20 +181,33 @@ export async function fetchOHLCV(symbolInput, twelveKey = null) {
   if (!symbolInput) return null;
   const bare = resolveTicker(symbolInput);
 
-  // 1. Try Stooq.com (Unlimited Free Chart Data)
+  // 1. Try Stooq.com (Unlimited Free Charts) + Twelve Data (Real-Time Change) in parallel
   try {
-    const { candles } = await fetchChartDataStooq(bare);
-    if (candles && candles.length > 0) {
+    const [stooqRes, twelveQuote] = await Promise.allSettled([
+      fetchChartDataStooq(bare),
+      fetchQuoteTwelveData(bare, twelveKey)
+    ]);
+
+    const candles = stooqRes.status === 'fulfilled' ? (stooqRes.value?.candles || []) : [];
+    const quote = twelveQuote.status === 'fulfilled' ? twelveQuote.value : null;
+
+    if (candles.length > 0) {
       const lastCandle = candles[candles.length - 1];
-      const prevCandle = candles[candles.length - 2] || lastCandle;
+      const realPrice = quote?.currentPrice || lastCandle.close;
 
-      const realPrice = lastCandle.close;
-      const prevClose = prevCandle.close;
-      const change = +(realPrice - prevClose).toFixed(2);
-      const pChange = +(((realPrice - prevClose) / (prevClose || 1)) * 100).toFixed(2);
+      // Use Twelve Data real-time change if available, else compute from last 2 candles
+      let change, pChange;
+      if (quote && typeof quote.change === 'number') {
+        change = quote.change;
+        pChange = quote.pChange;
+      } else {
+        const prevCandle = candles[candles.length - 2] || lastCandle;
+        change = +(lastCandle.close - prevCandle.close).toFixed(2);
+        pChange = +(((lastCandle.close - prevCandle.close) / (prevCandle.close || 1)) * 100).toFixed(2);
+      }
 
-      const high52 = Math.max(...candles.map(c => c.high));
-      const low52 = Math.min(...candles.map(c => c.low));
+      const high52 = quote?.high52 || Math.max(...candles.map(c => c.high));
+      const low52 = quote?.low52 || Math.min(...candles.map(c => c.low));
 
       const localMeta = POPULAR_STOCKS.find(s => s.symbol === bare);
 
@@ -203,7 +216,7 @@ export async function fetchOHLCV(symbolInput, twelveKey = null) {
         meta: {
           symbol: bare,
           fullName: `${bare}.NSE`,
-          name: localMeta?.name || `${bare} Ltd.`,
+          name: quote?.companyName || localMeta?.name || `${bare} Ltd.`,
           exchange: 'NSE',
           price: realPrice,
           change,
