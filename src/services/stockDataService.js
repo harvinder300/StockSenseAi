@@ -91,13 +91,18 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null, alp
 
   const localMeta = POPULAR_STOCKS.find(s => s.symbol.toUpperCase() === bareSymbol);
 
+  // Priority: Real Stooq chart price > Twelve Data quote > hardcoded fallback
+  const realPrice = chartResult?.meta?.price || lastPrice;
+  const realChange = chartResult?.meta?.change || nseQuote?.change || 0;
+  const realPChange = chartResult?.meta?.pChange || nseQuote?.pChange || 0;
+
   const meta = {
     symbol: bareSymbol,
-    name: nseQuote?.companyName || localMeta?.name || chartResult?.meta?.name || `${bareSymbol} Ltd.`,
+    name: chartResult?.meta?.name || nseQuote?.companyName || localMeta?.name || `${bareSymbol} Ltd.`,
     sector: nseQuote?.industry || localMeta?.sector || 'NSE Equities',
-    price: nseQuote?.currentPrice || lastPrice,
-    change: nseQuote?.change || 0,
-    pChange: nseQuote?.pChange || 0,
+    price: realPrice,
+    change: realChange,
+    pChange: realPChange,
     currency: 'INR',
     isLive: true,
     ma50: +ma50.toFixed(2),

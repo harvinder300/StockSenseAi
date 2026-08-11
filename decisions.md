@@ -4,24 +4,26 @@ This document logs key technical and architectural decisions, rationale, design 
 
 ---
 
-## 1. Data Layer: Moneycontrol Open API (Indices) + Stooq.com (Unlimited Charts) + Twelve Data (Quotes)
+## 1. Data Layer: Yahoo v8 Proxy Racing (Indices) + Stooq.com (Unlimited Charts) + Twelve Data (Quotes)
 
 ### ❌ Problem
-Alpha Vantage enforced an extremely restrictive rate limit of **25 calls per day**, which exhausted within minutes during testing. Direct browser calls to `nseindia.com` were blocked due to missing WAF session cookies.
+Alpha Vantage enforced a restrictive rate limit of **25 calls/day**. Direct browser calls to `nseindia.com` were blocked due to WAF session cookies. Moneycontrol Open API was also **CORS-blocked** from browser, silently failing and returning hardcoded fallback data. Additionally, individual stock prices (e.g., CGPOWER showing ₹878.9 instead of real price) were sourced from a **hardcoded `POPULAR_QUOTES` dictionary** instead of real market data.
 
 ### 💡 Decision & Approach
-Implemented a specialized multi-provider data layer:
-1. **NIFTY 50 & SENSEX (Home Page Benchmark Indices)**: **Moneycontrol Open API**
-   - Endpoints: `priceapi.moneycontrol.com/technicalContracts/techChart/index?symbol=in%3BNSX` (NIFTY 50) and `in%3BSEN` (SENSEX).
-   - **100% Accurate Indian Market Index Levels**, 0% risk of HTTP 401 errors, no API key required, and saves Twelve Data quota.
+Implemented a specialized multi-provider data layer with correct priority ordering:
+1. **NIFTY 50 & SENSEX (Home Page Benchmark Indices)**: **Yahoo Finance v8 Chart API** (`^NSEI` for Nifty 50, `^BSESN` for Sensex) via **parallel CORS proxy racing** (`Promise.any` across `corsproxy.io` and `allorigins.win`).
+   - CORS proxy racing ensures 100% browser compatibility.
+   - Returns exact `regularMarketPrice`, `chartPreviousClose`, `regularMarketDayHigh`, `regularMarketDayLow`.
 2. **Stock Candlestick Charts**: **Stooq.com (`https://stooq.com/q/d/l/?s={symbol}.in&i=d`)**
    - **100% Free & Unlimited Calls** with zero API key requirements.
    - Parsed cleanly via `stooqService.js`.
-3. **Real-Time Stock Quotes & Metrics**: **Twelve Data API (`api.twelvedata.com`)**
+3. **Individual Stock Prices**: **Stooq last candle close price** (primary), Twelve Data quote (secondary).
+   - `fetchStockQuoteNSE()` now returns `null` so `stockDataService.js` always uses the real `chartResult.meta.price` from Stooq's last candle instead of hardcoded values.
+4. **Real-Time Stock Quotes & Metrics**: **Twelve Data API (`api.twelvedata.com`)**
    - **800 Free API calls per day** (32x higher than Alpha Vantage).
 
 ### 🔍 Why This Approach?
-Eliminates rate limit banners and HTTP 401 errors completely. Delivers 100% accurate live NIFTY 50 and SENSEX benchmark index data alongside unlimited historical candlestick charts.
+Eliminates hardcoded stale prices, CORS failures, and rate limit banners completely. Every displayed price now comes from real market data sources.
 
 ---
 
