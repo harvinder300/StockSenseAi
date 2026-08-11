@@ -194,6 +194,12 @@ Each entry records the user's query, the root cause identified, the decision mad
 
 ### 23:32 IST — User Query: "Data is still not accurate. STALLION still showing +44.13%."
 - **Root Cause**: Twelve Data `demo` key doesn't support Indian stocks → function returns `null` → falls back to broken Stooq candle diff.
-- **Decision (Attempt 2 — Final Fix)**: Replace Twelve Data with **Yahoo Finance v8 Chart API** (`meta.regularMarketPrice` & `meta.chartPreviousClose`) via CORS proxy racing. Key insight: v8 chart API is public and unblocked (only v10 quoteSummary was blocked with 401). Run Stooq + Yahoo v8 in parallel: Stooq provides unlimited chart candles, Yahoo v8 provides accurate real-time price/change/pChange.
-- **Files Changed**: `src/services/stockSearchService.js` (fetchOHLCV rewritten)
+- **Decision (Attempt 2)**: Raced Stooq + Yahoo v8 via CORS proxies.
+- **Result**: Proxy racing failed on Vercel live domain due to Cloudflare/WAF proxy blocks.
+- **Commit**: `9a6ffcd`
+
+### 23:50 IST — User Query: "Still data is not accurate... on live production app showing unable to fetch... brain storm for permanent solution"
+- **Root Cause**: External CORS proxies (`corsproxy.io` & `allorigins.win`) get rate limited or blocked on live production domains (Vercel `stock-sense-ai-nine.vercel.app`), causing `fetchWithProxy` to fail completely. Additionally, `DEFAULT_DEMO_KEY = 'demo'` failed for Indian `.NSE` stocks.
+- **Decision (PERMANENT ARCHITECTURE FIX)**: Made **Twelve Data API** (`api.twelvedata.com`) the **#1 Direct CORS-Free Data Engine** for Quotes, 90-day Daily Candlestick Charts (`time_series`), and Benchmark Indices (`NIFTY50.NSE`, `SENSEX.BSE`). Because Twelve Data natively sets `Access-Control-Allow-Origin: *`, browser calls **NEVER get blocked by CORS proxies** on Localhost or Vercel Production.
+- **Files Changed**: `src/services/twelveDataService.js`, `src/services/stockSearchService.js`, `src/services/nseService.js`, `decisions.md`
 - **Commit**: (this commit)

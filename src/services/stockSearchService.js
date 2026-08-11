@@ -1,13 +1,12 @@
 /**
  * stockSearchService.js
- * High-Speed Market Data Fetcher & Chart Parser
- * Primary Chart Source: Stooq.com (100% Free Unlimited CSV Charts for Indian Stocks)
- * Secondary Sources: Yahoo v8 Public Chart & Twelve Data API
+ * Primary Data Layer Engine powered by Twelve Data API (Quotes & Candlestick Series)
+ * Secondary Fallback: Stooq.com & Yahoo v8 Chart
  */
 
 import { stripHtml } from '../utils/security';
 import { fetchChartDataStooq } from './stooqService';
-import { fetchQuoteTwelveData } from './twelveDataService';
+import { fetchQuoteTwelveData, fetchChartTwelveData } from './twelveDataService';
 import { COMPANY_NAME_MAP, POPULAR_STOCKS } from '../data/indianStocks';
 
 const CORS_PROXIES = [
@@ -174,14 +173,75 @@ export async function searchStocks(query) {
 
 /**
  * Fetches REAL market price and REAL OHLCV candles
- * Primary Source: Stooq.com (100% Free & Unlimited Chart Data)
- * Secondary Sources: Twelve Data / Yahoo Public Chart v8
+ * Primary Source: Twelve Data API (Quotes & Candlesticks)
+ * Secondary Sources: Stooq.com & Yahoo Public Chart v8
  */
 export async function fetchOHLCV(symbolInput, twelveKey = null) {
   if (!symbolInput) return null;
   const bare = resolveTicker(symbolInput);
+  const localMeta = POPULAR_STOCKS.find(s => s.symbol === bare);
 
-  // 1. Run Stooq (unlimited charts) + Yahoo v8 (real-time meta) in parallel
+  // 1. Primary Engine: Twelve Data API (Quote + 90-Day Time Series in parallel)
+  try {
+    const [quoteRes, chartRes] = await Promise.allSettled([
+      fetchQuoteTwelveData(bare, twelveKey),
+      fetchChartTwelveData(bare, twelveKey)
+    ]);
+
+    const quote = quoteRes.status === 'fulfilled' ? quoteRes.value : null;
+    const twelveCandles = chartRes.status === 'fulfilled' ? (chartRes.value?.candles || []) : [];
+
+    // If Twelve Data returned a quote OR candles
+    if (quote || twelveCandles.length > 0) {
+      let candles = twelveCandles;
+
+      // If Twelve Data candles are empty, fetch Stooq candles in background
+      if (candles.length === 0) {
+        try {
+          const stooqRes = await fetchChartDataStooq(bare);
+          if (stooqRes?.candles && stooqRes.candles.length > 0) {
+            candles = stooqRes.candles;
+          }
+        } catch (_) {}
+      }
+
+      const price = quote?.currentPrice || (candles.length > 0 ? candles[candles.length - 1].close : 0);
+
+      if (price > 0 || candles.length > 0) {
+        let change = quote?.change || 0;
+        let pChange = quote?.pChange || 0;
+
+        if (!quote && candles.length >= 2) {
+          const lastC = candles[candles.length - 1];
+          const prevC = candles[candles.length - 2];
+          change = +(lastC.close - prevC.close).toFixed(2);
+          pChange = +(((lastC.close - prevC.close) / (prevC.close || 1)) * 100).toFixed(2);
+        }
+
+        const high52 = quote?.high52 || (candles.length > 0 ? Math.max(...candles.map(c => c.high)) : price * 1.15);
+        const low52 = quote?.low52 || (candles.length > 0 ? Math.min(...candles.map(c => c.low)) : price * 0.85);
+
+        return {
+          candles,
+          meta: {
+            symbol: bare,
+            fullName: `${bare}.NSE`,
+            name: quote?.companyName || localMeta?.name || `${bare} Ltd.`,
+            exchange: 'NSE',
+            price,
+            change,
+            pChange,
+            high52: +high52.toFixed(2),
+            low52: +low52.toFixed(2),
+            currency: 'INR',
+          },
+          isLimitReached: false
+        };
+      }
+    }
+  } catch (_) {}
+
+  // 2. Secondary Engine: Stooq.com + Yahoo v8 Parallel Race
   try {
     const yahooSymbol = `${bare}.NS`;
     const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?range=6mo&interval=1d&includePrePost=false&_=${Date.now()}`;
@@ -193,7 +253,6 @@ export async function fetchOHLCV(symbolInput, twelveKey = null) {
 
     const stooqCandles = stooqRes.status === 'fulfilled' ? (stooqRes.value?.candles || []) : [];
 
-    // Parse Yahoo v8 response for real-time meta + candles
     let yahooMeta = null;
     let yahooCandles = [];
     if (yahooRes.status === 'fulfilled' && yahooRes.value?.chart?.result?.[0]) {
@@ -212,8 +271,6 @@ export async function fetchOHLCV(symbolInput, twelveKey = null) {
           exchange: stripHtml(meta.exchangeName || 'NSE'),
           high52: parseFloat(meta.fiftyTwoWeekHigh) || 0,
           low52: parseFloat(meta.fiftyTwoWeekLow) || 0,
-          dayHigh: parseFloat(meta.regularMarketDayHigh) || price,
-          dayLow: parseFloat(meta.regularMarketDayLow) || price,
           currency: stripHtml(meta.currency || 'INR')
         };
       }
@@ -221,32 +278,23 @@ export async function fetchOHLCV(symbolInput, twelveKey = null) {
       yahooCandles = parseChartData(yahooRes.value);
     }
 
-    // Use Stooq candles if available, otherwise Yahoo candles
     const candles = stooqCandles.length > 0 ? stooqCandles : yahooCandles;
 
     if (candles.length > 0 || yahooMeta) {
       const lastCandle = candles.length > 0 ? candles[candles.length - 1] : null;
+      const realPrice = yahooMeta?.price || lastCandle?.close || localMeta?.price || 0;
 
-      // Price priority: Yahoo v8 real-time > Stooq last candle
-      const realPrice = yahooMeta?.price || lastCandle?.close || 0;
+      let change = yahooMeta?.change || 0;
+      let pChange = yahooMeta?.pChange || 0;
 
-      // Change priority: Yahoo v8 real-time (accurate today's change) > Stooq candle diff
-      let change, pChange;
-      if (yahooMeta && typeof yahooMeta.change === 'number') {
-        change = yahooMeta.change;
-        pChange = yahooMeta.pChange;
-      } else if (candles.length >= 2) {
+      if (!yahooMeta && candles.length >= 2) {
         const prev = candles[candles.length - 2];
         change = +(lastCandle.close - prev.close).toFixed(2);
         pChange = +(((lastCandle.close - prev.close) / (prev.close || 1)) * 100).toFixed(2);
-      } else {
-        change = 0;
-        pChange = 0;
       }
 
       const high52 = yahooMeta?.high52 || (candles.length > 0 ? Math.max(...candles.map(c => c.high)) : realPrice);
       const low52 = yahooMeta?.low52 || (candles.length > 0 ? Math.min(...candles.map(c => c.low)) : realPrice);
-      const localMeta = POPULAR_STOCKS.find(s => s.symbol === bare);
 
       return {
         candles,
@@ -261,73 +309,6 @@ export async function fetchOHLCV(symbolInput, twelveKey = null) {
           high52: +high52.toFixed(2),
           low52: +low52.toFixed(2),
           currency: yahooMeta?.currency || 'INR',
-        },
-        isLimitReached: false
-      };
-    }
-  } catch (_) {}
-
-  // 2. Secondary Source: Yahoo Finance v8 Public Chart
-  const suffixesToTry = [`${bare}.NS`, `${bare}.BO`, bare];
-  for (const sym of suffixesToTry) {
-    try {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?range=6mo&interval=1d&includePrePost=false&_=${Date.now()}`;
-      const data = await fetchWithProxy(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-
-      const result = data?.chart?.result?.[0];
-      if (!result) continue;
-
-      const candles = parseChartData(data);
-      if (!candles || candles.length === 0) continue;
-
-      const meta = result.meta || {};
-      const lastCandle = candles[candles.length - 1];
-      const prevCandle = candles[candles.length - 2] || lastCandle;
-
-      const realPrice = +(meta.regularMarketPrice || lastCandle.close).toFixed(2);
-      const prevClose = +(meta.chartPreviousClose || prevCandle.close).toFixed(2);
-      const change = +(realPrice - prevClose).toFixed(2);
-      const pChange = +(((realPrice - prevClose) / (prevClose || 1)) * 100).toFixed(2);
-
-      const high52 = meta.fiftyTwoWeekHigh || Math.max(...candles.map(c => c.high));
-      const low52 = meta.fiftyTwoWeekLow || Math.min(...candles.map(c => c.low));
-
-      return {
-        candles,
-        meta: {
-          symbol: bare,
-          fullName: sym,
-          name: stripHtml(meta.longName || meta.shortName || bare),
-          exchange: stripHtml(meta.exchangeName || 'NSE'),
-          price: realPrice,
-          change,
-          pChange,
-          high52: +high52.toFixed(2),
-          low52: +low52.toFixed(2),
-          currency: stripHtml(meta.currency || 'INR'),
-        },
-        isLimitReached: false
-      };
-    } catch (_) {}
-  }
-
-  // 3. Tertiary Source: Twelve Data API
-  try {
-    const twelveQuote = await fetchQuoteTwelveData(bare, twelveKey);
-    if (twelveQuote) {
-      return {
-        candles: [],
-        meta: {
-          symbol: bare,
-          fullName: `${bare}.NSE`,
-          name: twelveQuote.companyName,
-          exchange: 'NSE',
-          price: twelveQuote.currentPrice,
-          change: twelveQuote.change,
-          pChange: twelveQuote.pChange,
-          high52: twelveQuote.high52,
-          low52: twelveQuote.low52,
-          currency: 'INR'
         },
         isLimitReached: false
       };

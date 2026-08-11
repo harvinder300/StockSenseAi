@@ -3,13 +3,13 @@
  * Multi-Source Market Data Engine for Benchmark Indices & Market Movers
  * 
  * NIFTY 50 & SENSEX Sources (in priority order):
- *   1. Yahoo Finance v8 Chart API (^NSEI for Nifty, ^BSESN for Sensex) via CORS proxy racing
- *   2. BSE India Open API (secondary fallback)
- *   3. Hardcoded last-known snapshot (final fallback)
- * 
- * Individual Stock Quotes:
- *   Real-time price comes from Stooq chart last candle (in stockSearchService.js)
+ *   1. Twelve Data API (NIFTY50.NSE & SENSEX.BSE) — Direct CORS-enabled API
+ *   2. Yahoo Finance v8 Chart API (^NSEI for Nifty, ^BSESN for Sensex) via CORS proxy racing
+ *   3. BSE India Open API (secondary fallback)
+ *   4. Hardcoded last-known snapshot (final fallback)
  */
+
+import { fetchIndicesTwelveData } from './twelveDataService';
 
 const CORS_PROXIES = [
   (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
@@ -35,9 +35,6 @@ const REAL_MARKET_SNAPSHOT = {
   ]
 };
 
-/**
- * Fast JSON fetcher with CORS proxy racing
- */
 async function fetchJsonWithProxy(url) {
   const trySingle = async (targetUrl, timeout = 3000) => {
     const res = await fetch(targetUrl, { signal: AbortSignal.timeout(timeout) });
@@ -54,9 +51,6 @@ async function fetchJsonWithProxy(url) {
   return Promise.any(promises);
 }
 
-/**
- * Parse Yahoo v8 chart response into an index data object
- */
 function parseYahooIndexData(data, name) {
   try {
     const result = data?.chart?.result?.[0];
@@ -80,15 +74,23 @@ function parseYahooIndexData(data, name) {
 
 /**
  * Fetch NIFTY 50 & SENSEX indices live
- * Primary: Yahoo v8 Chart API (^NSEI and ^BSESN) via parallel CORS proxy racing
- * Secondary: BSE India Open API
- * Tertiary: Hardcoded last-known snapshot
+ * Primary: Twelve Data API (NIFTY50.NSE & SENSEX.BSE)
+ * Secondary: Yahoo v8 Chart API (^NSEI and ^BSESN) via parallel CORS proxy racing
+ * Tertiary: BSE India Open API
  */
 export async function fetchNiftyAndSensex() {
-  let niftyData = null;
-  let sensexData = null;
+  // 1. Primary Source: Twelve Data API
+  try {
+    const twelveIndices = await fetchIndicesTwelveData();
+    if (twelveIndices?.nifty || twelveIndices?.sensex) {
+      return {
+        nifty: twelveIndices.nifty || REAL_MARKET_SNAPSHOT.nifty,
+        sensex: twelveIndices.sensex || REAL_MARKET_SNAPSHOT.sensex
+      };
+    }
+  } catch (_) {}
 
-  // 1. Primary: Yahoo v8 Chart API for indices (^NSEI = Nifty 50, ^BSESN = Sensex)
+  // 2. Secondary Source: Yahoo v8 Chart API for indices (^NSEI = Nifty 50, ^BSESN = Sensex)
   try {
     const niftyUrl = `https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEI?range=1d&interval=1d&_=${Date.now()}`;
     const sensexUrl = `https://query1.finance.yahoo.com/v8/finance/chart/%5EBSESN?range=1d&interval=1d&_=${Date.now()}`;
@@ -97,6 +99,9 @@ export async function fetchNiftyAndSensex() {
       fetchJsonWithProxy(niftyUrl),
       fetchJsonWithProxy(sensexUrl)
     ]);
+
+    let niftyData = null;
+    let sensexData = null;
 
     if (niftyRes.status === 'fulfilled') {
       niftyData = parseYahooIndexData(niftyRes.value, 'NIFTY 50');
@@ -113,7 +118,7 @@ export async function fetchNiftyAndSensex() {
     }
   } catch (_) {}
 
-  // 2. Secondary: BSE India Open API
+  // 3. Tertiary Source: BSE India Open API
   try {
     const bseUrl = 'https://api.bseindia.com/BseIndiaAPI/api/SensexGraphData/w?Flag=1';
     const data = await fetchJsonWithProxy(bseUrl);
@@ -131,7 +136,6 @@ export async function fetchNiftyAndSensex() {
     }
   } catch (_) {}
 
-  // 3. Tertiary: Hardcoded snapshot
   return REAL_MARKET_SNAPSHOT;
 }
 
@@ -181,11 +185,6 @@ export async function fetchNSELosers() {
   return REAL_MARKET_SNAPSHOT.losers;
 }
 
-/**
- * Fetch Real Time Stock Quote — returns null so Stooq chart data takes priority
- */
 export async function fetchStockQuoteNSE(symbolInput) {
-  // Real stock prices now come from Stooq.com chart last candle (in stockSearchService.js)
-  // This function returns null so stockDataService.js uses chartResult.meta.price
   return null;
 }
