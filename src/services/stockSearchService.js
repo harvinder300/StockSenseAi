@@ -181,49 +181,86 @@ export async function fetchOHLCV(symbolInput, twelveKey = null) {
   if (!symbolInput) return null;
   const bare = resolveTicker(symbolInput);
 
-  // 1. Try Stooq.com (Unlimited Free Charts) + Twelve Data (Real-Time Change) in parallel
+  // 1. Run Stooq (unlimited charts) + Yahoo v8 (real-time meta) in parallel
   try {
-    const [stooqRes, twelveQuote] = await Promise.allSettled([
+    const yahooSymbol = `${bare}.NS`;
+    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?range=6mo&interval=1d&includePrePost=false&_=${Date.now()}`;
+
+    const [stooqRes, yahooRes] = await Promise.allSettled([
       fetchChartDataStooq(bare),
-      fetchQuoteTwelveData(bare, twelveKey)
+      fetchWithProxy(yahooUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } })
     ]);
 
-    const candles = stooqRes.status === 'fulfilled' ? (stooqRes.value?.candles || []) : [];
-    const quote = twelveQuote.status === 'fulfilled' ? twelveQuote.value : null;
+    const stooqCandles = stooqRes.status === 'fulfilled' ? (stooqRes.value?.candles || []) : [];
 
-    if (candles.length > 0) {
-      const lastCandle = candles[candles.length - 1];
-      const realPrice = quote?.currentPrice || lastCandle.close;
+    // Parse Yahoo v8 response for real-time meta + candles
+    let yahooMeta = null;
+    let yahooCandles = [];
+    if (yahooRes.status === 'fulfilled' && yahooRes.value?.chart?.result?.[0]) {
+      const result = yahooRes.value.chart.result[0];
+      const meta = result.meta || {};
+      const price = parseFloat(meta.regularMarketPrice) || 0;
+      const prevClose = parseFloat(meta.chartPreviousClose || meta.previousClose) || 0;
 
-      // Use Twelve Data real-time change if available, else compute from last 2 candles
-      let change, pChange;
-      if (quote && typeof quote.change === 'number') {
-        change = quote.change;
-        pChange = quote.pChange;
-      } else {
-        const prevCandle = candles[candles.length - 2] || lastCandle;
-        change = +(lastCandle.close - prevCandle.close).toFixed(2);
-        pChange = +(((lastCandle.close - prevCandle.close) / (prevCandle.close || 1)) * 100).toFixed(2);
+      if (price > 0) {
+        yahooMeta = {
+          price,
+          prevClose,
+          change: +(price - prevClose).toFixed(2),
+          pChange: +(((price - prevClose) / (prevClose || 1)) * 100).toFixed(2),
+          name: stripHtml(meta.longName || meta.shortName || bare),
+          exchange: stripHtml(meta.exchangeName || 'NSE'),
+          high52: parseFloat(meta.fiftyTwoWeekHigh) || 0,
+          low52: parseFloat(meta.fiftyTwoWeekLow) || 0,
+          dayHigh: parseFloat(meta.regularMarketDayHigh) || price,
+          dayLow: parseFloat(meta.regularMarketDayLow) || price,
+          currency: stripHtml(meta.currency || 'INR')
+        };
       }
 
-      const high52 = quote?.high52 || Math.max(...candles.map(c => c.high));
-      const low52 = quote?.low52 || Math.min(...candles.map(c => c.low));
+      yahooCandles = parseChartData(yahooRes.value);
+    }
 
+    // Use Stooq candles if available, otherwise Yahoo candles
+    const candles = stooqCandles.length > 0 ? stooqCandles : yahooCandles;
+
+    if (candles.length > 0 || yahooMeta) {
+      const lastCandle = candles.length > 0 ? candles[candles.length - 1] : null;
+
+      // Price priority: Yahoo v8 real-time > Stooq last candle
+      const realPrice = yahooMeta?.price || lastCandle?.close || 0;
+
+      // Change priority: Yahoo v8 real-time (accurate today's change) > Stooq candle diff
+      let change, pChange;
+      if (yahooMeta && typeof yahooMeta.change === 'number') {
+        change = yahooMeta.change;
+        pChange = yahooMeta.pChange;
+      } else if (candles.length >= 2) {
+        const prev = candles[candles.length - 2];
+        change = +(lastCandle.close - prev.close).toFixed(2);
+        pChange = +(((lastCandle.close - prev.close) / (prev.close || 1)) * 100).toFixed(2);
+      } else {
+        change = 0;
+        pChange = 0;
+      }
+
+      const high52 = yahooMeta?.high52 || (candles.length > 0 ? Math.max(...candles.map(c => c.high)) : realPrice);
+      const low52 = yahooMeta?.low52 || (candles.length > 0 ? Math.min(...candles.map(c => c.low)) : realPrice);
       const localMeta = POPULAR_STOCKS.find(s => s.symbol === bare);
 
       return {
         candles,
         meta: {
           symbol: bare,
-          fullName: `${bare}.NSE`,
-          name: quote?.companyName || localMeta?.name || `${bare} Ltd.`,
-          exchange: 'NSE',
+          fullName: `${bare}.NS`,
+          name: yahooMeta?.name || localMeta?.name || `${bare} Ltd.`,
+          exchange: yahooMeta?.exchange || 'NSE',
           price: realPrice,
           change,
           pChange,
           high52: +high52.toFixed(2),
           low52: +low52.toFixed(2),
-          currency: 'INR',
+          currency: yahooMeta?.currency || 'INR',
         },
         isLimitReached: false
       };

@@ -187,7 +187,13 @@ Each entry records the user's query, the root cause identified, the decision mad
 - **Commit**: `2ec9210`
 
 ### 23:21 IST — User Query: "STALLION actual -5.00% but app shows +44.13%. CGPOWER actual +0.23% but app shows +28.5%."
-- **Root Cause**: Daily change was computed from Stooq's last 2 historical candles. Stooq historical data may have gaps or not include today's session, causing change to be calculated across days/weeks instead of today's actual change.
-- **Decision**: Fetch Stooq charts + Twelve Data real-time quote **in parallel** via `Promise.allSettled`. Use Twelve Data's real `change` and `percent_change` for the header. Fall back to Stooq candle diff only if Twelve Data is unavailable.
-- **Files Changed**: `src/services/stockSearchService.js` (fetchOHLCV), `decisions.md`
+- **Root Cause**: Daily change was computed from Stooq's last 2 historical candles. Stooq historical data has gaps and doesn't include today's session.
+- **Decision (Attempt 1)**: Fetch Twelve Data quote in parallel for real change/pChange.
+- **Result**: Failed — Twelve Data `demo` key only works for US stocks, returns error for Indian `.NSE` symbols.
+- **Commit**: `9af1c9d`
+
+### 23:32 IST — User Query: "Data is still not accurate. STALLION still showing +44.13%."
+- **Root Cause**: Twelve Data `demo` key doesn't support Indian stocks → function returns `null` → falls back to broken Stooq candle diff.
+- **Decision (Attempt 2 — Final Fix)**: Replace Twelve Data with **Yahoo Finance v8 Chart API** (`meta.regularMarketPrice` & `meta.chartPreviousClose`) via CORS proxy racing. Key insight: v8 chart API is public and unblocked (only v10 quoteSummary was blocked with 401). Run Stooq + Yahoo v8 in parallel: Stooq provides unlimited chart candles, Yahoo v8 provides accurate real-time price/change/pChange.
+- **Files Changed**: `src/services/stockSearchService.js` (fetchOHLCV rewritten)
 - **Commit**: (this commit)
