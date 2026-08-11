@@ -27,10 +27,10 @@ export default function HomePage({ onSelectStock, onNavigate }) {
         ]);
 
         if (isMounted) {
-          if (indicesData.nifty || indicesData.sensex) {
+          if (indicesData?.nifty || indicesData?.sensex) {
             setIndices({
-              nifty: indicesData.nifty || { name: 'NIFTY 50', price: null, change: 0, pChange: 0, high: null, low: null },
-              sensex: indicesData.sensex || { name: 'SENSEX', price: null, change: 0, pChange: 0, high: null, low: null }
+              nifty: indicesData?.nifty || { name: 'NIFTY 50', price: null, change: 0, pChange: 0, high: null, low: null },
+              sensex: indicesData?.sensex || { name: 'SENSEX', price: null, change: 0, pChange: 0, high: null, low: null }
             });
           }
 

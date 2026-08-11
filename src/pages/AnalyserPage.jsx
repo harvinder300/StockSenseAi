@@ -21,9 +21,10 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
     setAnalysisRes({ data: null, isLimitReached: false });
     try {
       const result = await getFullStockAnalysis(sym, geminiApiKey, alphaKey);
-      setAnalysisRes(result);
+      setAnalysisRes(result || { data: null, isLimitReached: false });
     } catch (err) {
       console.error('Analysis error:', err);
+      setAnalysisRes({ data: null, isLimitReached: false });
     } finally {
       setLoading(false);
     }
