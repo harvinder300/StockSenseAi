@@ -230,5 +230,16 @@ Each entry records the user's query, the root cause identified, the decision mad
   6. **Build Verification**: `npx vite build` succeeded cleanly in 5.71s with 0 errors. JS bundle size reduced from 427.94 kB to 419.62 kB.
 - **Files Changed**: `package.json`, `src/data/indianStocks.js`, `src/services/nseService.js`, `src/services/stooqService.js`, `src/services/stockDataService.js`, `src/components/StockSearchInput.jsx`, `src/components/StockChart.jsx`, `src/pages/AnalyserPage.jsx`, `src/pages/ComparePage.jsx`, `src/pages/HomePage.jsx`, `.env.example`, `decisions.md`
 
+### 20:34 IST — User Query: "Create a complete FastAPI backend for StockSense AI called 'stocksense-backend'"
+- **Decision & Architecture**: Created a production-ready **FastAPI Backend Services Stack** (`stocksense-backend/`) featuring:
+  1. **Core API Server (`main.py`)**: CORS middleware configured for Vercel production (`https://stock-sense-ai-nine.vercel.app`) & local dev (`localhost:5173`).
+  2. **Modular Routes (`routes/`)**: `indices.py`, `stocks.py`, `charts.py`, `fundamentals.py`, `search.py`, `ai.py`.
+  3. **High-Speed Redis Caching (`cache/redis_cache.py`)**: TTL-tiered caching (1 min indices, 5 min quotes, 15 min charts, 24 hr fundamentals, 1 hr search).
+  4. **Data Engine Services (`services/`)**: Twelve Data API integration (`twelve_data.py`), Stooq CSV fallback (`stooq_service.py`), and Gemini 1.5 Flash AI analysis (`gemini_service.py`).
+  5. **Utilities (`utils/`)**: Automated company name to ticker symbol resolver (`symbol_resolver.py`), IP-based sliding window rate limiter (`rate_limiter.py`), and regex input validators (`validators.py`).
+  6. **Deployment Blueprint (`render.yaml`)**: Pre-configured for zero-downtime deployment on Render with free managed Redis instance.
+- **Directory Created**: `stocksense-backend/` (24 modular Python files & configuration manifests).
+
+
 
 
