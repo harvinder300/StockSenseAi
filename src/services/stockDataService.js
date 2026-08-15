@@ -7,7 +7,6 @@ import { POPULAR_STOCKS } from '../data/indianStocks';
 import { calculateRSI, calculateMACD, detectPatterns, calculateConfidenceScore } from './technicalIndicators';
 import { analyzeFundamentalWithGemini } from './geminiService';
 import { loadStockData } from './dataOrchestrator';
-import { fetchMultiTimeframeData } from './multiTimeframeService';
 import { calculateSignal } from '../utils/signals';
 import { calculateEntryPoint } from '../utils/entryScoring';
 

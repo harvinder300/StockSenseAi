@@ -180,11 +180,8 @@ export default function ComparePage({ geminiApiKey }) {
   const [failedB, setFailedB] = useState(false);
   const [loadingA, setLoadingA] = useState(false);
   const [loadingB, setLoadingB] = useState(false);
-  const [verdict, setVerdict] = useState(null);
   const [verdictLoading, setVerdictLoading] = useState(false);
-
-  const alphaKey = localStorage.getItem('alphavantage_api_key') || null;
-
+  const [verdict, setVerdict] = useState(null);
   // Run Gemini comparison whenever both stocks are loaded
   const runComparison = useCallback(async (a, b) => {
     if (!a || !b) return;
@@ -224,7 +221,7 @@ export default function ComparePage({ geminiApiKey }) {
     setVerdict(null);
     setLoadingA(true);
     try {
-      const res = await getFullStockAnalysis(bare, geminiApiKey, alphaKey);
+      const res = await getFullStockAnalysis(bare, geminiApiKey);
       if (res?.data) {
         setStockA(res.data);
         setStockB(prev => { if (prev) runComparison(res.data, prev); return prev; });
@@ -232,7 +229,7 @@ export default function ComparePage({ geminiApiKey }) {
         setFailedA(true);
       }
     } finally { setLoadingA(false); }
-  }, [geminiApiKey, alphaKey, runComparison]);
+  }, [geminiApiKey, runComparison]);
 
   const handleSelectB = useCallback(async (sym, name) => {
     const bare = sym.replace(/\.(NS|BO)$/i, '');
@@ -242,7 +239,7 @@ export default function ComparePage({ geminiApiKey }) {
     setVerdict(null);
     setLoadingB(true);
     try {
-      const res = await getFullStockAnalysis(bare, geminiApiKey, alphaKey);
+      const res = await getFullStockAnalysis(bare, geminiApiKey);
       if (res?.data) {
         setStockB(res.data);
         setStockA(prev => { if (prev) runComparison(prev, res.data); return prev; });
@@ -250,7 +247,7 @@ export default function ComparePage({ geminiApiKey }) {
         setFailedB(true);
       }
     } finally { setLoadingB(false); }
-  }, [geminiApiKey, alphaKey, runComparison]);
+  }, [geminiApiKey, runComparison]);
 
   const bothLoaded = Boolean(stockA && stockB);
 

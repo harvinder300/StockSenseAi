@@ -1,14 +1,9 @@
 /**
  * stooqService.js
- * Stooq.com API Integration — 100% Free & Unlimited Historical Chart Fallback
+ * Stooq.com Integration — 100% Free Historical Chart Fallback
  */
 
 import { resolveSymbolForStooq } from '../utils/symbolResolver';
-
-const CORS_PROXIES = [
-  (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-];
 
 /**
  * Parses Stooq CSV text into clean OHLCV objects for Lightweight Charts
@@ -67,33 +62,18 @@ export async function fetchStooqChart(symbol) {
   const stooqSymbol = resolveSymbolForStooq(symbol);
   const url = `https://stooq.com/q/d/l/?s=${stooqSymbol}&i=d`;
 
-  // 1. Direct fetch
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
     if (res.ok) {
       const csvText = await res.text();
       const candles = parseStooqCSV(csvText);
       if (candles.length > 0) return candles.slice(-90);
     }
-  } catch (_) {}
-
-  // 2. Parallel CORS Proxy Race
-  const proxyPromises = CORS_PROXIES.map(async (makeProxy) => {
-    const proxyUrl = makeProxy(url);
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(4000) });
-    if (res.ok) {
-      const csvText = await res.text();
-      const candles = parseStooqCSV(csvText);
-      if (candles.length > 0) return candles.slice(-90);
-    }
-    throw new Error('Proxy failed');
-  });
-
-  try {
-    return await Promise.any(proxyPromises);
-  } catch (_) {
-    return null;
+  } catch (err) {
+    console.error(`Stooq fetch error for ${symbol}:`, err);
   }
+
+  return null;
 }
 
 export const fetchChartDataStooq = async (symbol) => {

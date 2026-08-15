@@ -1,188 +1,115 @@
 /**
  * nseService.js
- * Multi-Source Market Data Engine for Benchmark Indices & Market Movers
- * 
- * NIFTY 50 & SENSEX Sources (in priority order):
- *   1. Twelve Data API (NIFTY50.NSE & SENSEX.BSE) — Direct CORS-enabled API
- *   2. Yahoo Finance v8 Chart API (^NSEI for Nifty, ^BSESN for Sensex) via CORS proxy racing
- *   3. BSE India Open API (secondary fallback)
- *   4. Hardcoded last-known snapshot (final fallback)
+ * Primary Market Data Engine for Benchmark Indices & Stock Autocomplete
  */
 
-import { fetchIndicesTwelveData } from './twelveDataService';
+import { fetchIndicesTwelveData, getStoredTwelveKey } from './twelveDataService';
+import { POPULAR_STOCKS, COMPANY_NAME_MAP } from '../data/indianStocks';
+import { stripHtml } from '../utils/security';
 
-const CORS_PROXIES = [
-  (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-];
+export function resolveTicker(input) {
+  if (!input) return 'RELIANCE';
+  const clean = input.trim().toUpperCase().replace(/\.(NS|BO|BSE|NSE|IN)$/i, '').replace(/:NSE$/i, '');
 
-const REAL_MARKET_SNAPSHOT = {
-  nifty: { name: 'NIFTY 50', price: 24835.40, change: 162.30, pChange: 0.66, high: 24890.10, low: 24690.50 },
-  sensex: { name: 'SENSEX', price: 81381.60, change: 515.20, pChange: 0.64, high: 81520.40, low: 80890.10 },
-  gainers: [
-    { symbol: 'TATAMOTORS', name: 'Tata Motors Ltd.', sector: 'Automobile', price: 985.60, change: 28.40, pChange: 2.97 },
-    { symbol: 'BHARTIARTL', name: 'Bharti Airtel Ltd.', sector: 'Telecom', price: 1540.90, change: 31.50, pChange: 2.09 },
-    { symbol: 'TATASTEEL', name: 'Tata Steel Ltd.', sector: 'Metals & Mining', price: 164.80, change: 3.20, pChange: 1.98 },
-    { symbol: 'NTPC', name: 'NTPC Ltd.', sector: 'Power & Energy', price: 398.50, change: 7.10, pChange: 1.81 },
-    { symbol: 'MARUTI', name: 'Maruti Suzuki India Ltd.', sector: 'Automobile', price: 12410.00, change: 185.00, pChange: 1.51 }
-  ],
-  losers: [
-    { symbol: 'ADANIENT', name: 'Adani Enterprises Ltd.', sector: 'Conglomerates', price: 3120.00, change: -74.50, pChange: -2.33 },
-    { symbol: 'BAJFINANCE', name: 'Bajaj Finance Ltd.', sector: 'Financial Services', price: 6840.00, change: -112.00, pChange: -1.61 },
-    { symbol: 'INFY', name: 'Infosys Ltd.', sector: 'IT Services', price: 1812.40, change: -24.60, pChange: -1.34 },
-    { symbol: 'WIPRO', name: 'Wipro Ltd.', sector: 'IT Services', price: 512.60, change: -6.40, pChange: -1.23 },
-    { symbol: 'LT', name: 'Larsen & Toubro Ltd.', sector: 'Construction', price: 3620.00, change: -42.10, pChange: -1.15 }
-  ]
-};
-
-async function fetchJsonWithProxy(url) {
-  const trySingle = async (targetUrl, timeout = 3000) => {
-    const res = await fetch(targetUrl, { signal: AbortSignal.timeout(timeout) });
-    if (!res.ok) throw new Error('HTTP error');
-    const text = await res.text();
-    return JSON.parse(text);
-  };
-
-  const promises = [
-    trySingle(url, 2500),
-    ...CORS_PROXIES.map(makeProxy => trySingle(makeProxy(url), 3500))
-  ];
-
-  return Promise.any(promises);
-}
-
-function parseYahooIndexData(data, name) {
-  try {
-    const result = data?.chart?.result?.[0];
-    if (!result) return null;
-
-    const meta = result.meta || {};
-    const price = parseFloat(meta.regularMarketPrice) || 0;
-    const prevClose = parseFloat(meta.chartPreviousClose || meta.previousClose) || price;
-    if (price <= 0) return null;
-
-    const change = +(price - prevClose).toFixed(2);
-    const pChange = +(((price - prevClose) / (prevClose || 1)) * 100).toFixed(2);
-    const dayHigh = parseFloat(meta.regularMarketDayHigh) || price;
-    const dayLow = parseFloat(meta.regularMarketDayLow) || price;
-
-    return { name, price, change, pChange, high: dayHigh, low: dayLow };
-  } catch (_) {
-    return null;
+  if (COMPANY_NAME_MAP[clean]) {
+    return COMPANY_NAME_MAP[clean];
   }
+
+  for (const key of Object.keys(COMPANY_NAME_MAP)) {
+    if (clean.includes(key) || key.includes(clean)) {
+      return COMPANY_NAME_MAP[key];
+    }
+  }
+
+  const found = POPULAR_STOCKS.find(s =>
+    s.symbol.toUpperCase() === clean || s.name.toUpperCase().includes(clean)
+  );
+
+  return found ? found.symbol : clean;
 }
 
 /**
- * Fetch NIFTY 50 & SENSEX indices live
- * Primary: Twelve Data API (NIFTY50.NSE & SENSEX.BSE)
- * Secondary: Yahoo v8 Chart API (^NSEI and ^BSESN) via parallel CORS proxy racing
- * Tertiary: BSE India Open API
+ * Fast Autocomplete Search for Indian Equities
+ */
+export async function searchStocks(query) {
+  if (!query || query.trim().length < 1) return [];
+  const clean = query.trim().toUpperCase();
+
+  const matchingLocal = POPULAR_STOCKS.filter(s =>
+    s.symbol.toUpperCase().includes(clean) || s.name.toUpperCase().includes(clean)
+  ).map(s => ({
+    symbol: s.symbol,
+    name: s.name,
+    exchange: 'NSE',
+    type: 'EQUITY'
+  }));
+
+  const apiKey = getStoredTwelveKey();
+  if (apiKey) {
+    try {
+      const url = `https://api.twelvedata.com/symbol_search?symbol=${encodeURIComponent(clean)}&outputsize=8`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+      if (res.ok) {
+        const data = await res.json();
+        const apiData = data?.data || [];
+        const filtered = apiData
+          .filter(item => item.country === 'India' || item.exchange === 'NSE' || item.exchange === 'BSE')
+          .map(item => ({
+            symbol: stripHtml(item.symbol || '').replace(/\:NSE$/i, ''),
+            name: stripHtml(item.instrument_name || item.symbol || ''),
+            exchange: item.exchange || 'NSE',
+            type: 'EQUITY'
+          }));
+
+        if (filtered.length > 0) {
+          const merged = [...matchingLocal];
+          filtered.forEach(r => {
+            if (!merged.some(m => m.symbol === r.symbol)) {
+              merged.push(r);
+            }
+          });
+          return merged.slice(0, 10);
+        }
+      }
+    } catch (err) {
+      console.error('Symbol search error:', err);
+    }
+  }
+
+  return matchingLocal.slice(0, 10);
+}
+
+/**
+ * Fetch NIFTY 50 & SENSEX indices live from Twelve Data
  */
 export async function fetchNiftyAndSensex() {
-  // 1. Primary Source: Twelve Data API
   try {
     const twelveIndices = await fetchIndicesTwelveData();
     if (twelveIndices?.nifty || twelveIndices?.sensex) {
-      return {
-        nifty: twelveIndices.nifty || REAL_MARKET_SNAPSHOT.nifty,
-        sensex: twelveIndices.sensex || REAL_MARKET_SNAPSHOT.sensex
-      };
+      return twelveIndices;
     }
-  } catch (_) {}
+  } catch (err) {
+    console.error('Indices fetch error:', err);
+  }
 
-  // 2. Secondary Source: Yahoo v8 Chart API for indices (^NSEI = Nifty 50, ^BSESN = Sensex)
-  try {
-    const niftyUrl = `https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEI?range=1d&interval=1d&_=${Date.now()}`;
-    const sensexUrl = `https://query1.finance.yahoo.com/v8/finance/chart/%5EBSESN?range=1d&interval=1d&_=${Date.now()}`;
-
-    const [niftyRes, sensexRes] = await Promise.allSettled([
-      fetchJsonWithProxy(niftyUrl),
-      fetchJsonWithProxy(sensexUrl)
-    ]);
-
-    let niftyData = null;
-    let sensexData = null;
-
-    if (niftyRes.status === 'fulfilled') {
-      niftyData = parseYahooIndexData(niftyRes.value, 'NIFTY 50');
-    }
-    if (sensexRes.status === 'fulfilled') {
-      sensexData = parseYahooIndexData(sensexRes.value, 'SENSEX');
-    }
-
-    if (niftyData || sensexData) {
-      return {
-        nifty: niftyData || REAL_MARKET_SNAPSHOT.nifty,
-        sensex: sensexData || REAL_MARKET_SNAPSHOT.sensex
-      };
-    }
-  } catch (_) {}
-
-  // 3. Tertiary Source: BSE India Open API
-  try {
-    const bseUrl = 'https://api.bseindia.com/BseIndiaAPI/api/SensexGraphData/w?Flag=1';
-    const data = await fetchJsonWithProxy(bseUrl);
-    if (Array.isArray(data) && data.length > 0) {
-      const lastVal = parseFloat(data[data.length - 1]?.val || 0);
-      const firstVal = parseFloat(data[0]?.val || lastVal);
-      if (lastVal > 0) {
-        const change = +(lastVal - firstVal).toFixed(2);
-        const pChange = +((change / (firstVal || 1)) * 100).toFixed(2);
-        return {
-          nifty: REAL_MARKET_SNAPSHOT.nifty,
-          sensex: { name: 'SENSEX', price: lastVal, change, pChange, high: +(lastVal * 1.005).toFixed(2), low: +(lastVal * 0.995).toFixed(2) }
-        };
-      }
-    }
-  } catch (_) {}
-
-  return REAL_MARKET_SNAPSHOT;
+  return {
+    nifty: { name: 'NIFTY 50', price: null, change: 0, pChange: 0, high: null, low: null },
+    sensex: { name: 'SENSEX', price: null, change: 0, pChange: 0, high: null, low: null }
+  };
 }
 
 /**
- * Fetch Top Gainers from BSE India
+ * Fetch Top Gainers from Twelve Data / Market Stream
  */
 export async function fetchNSEGainers() {
-  try {
-    const bseUrl = 'https://api.bseindia.com/BseIndiaAPI/api/GetStkMovers/w?type=gainers';
-    const data = await fetchJsonWithProxy(bseUrl);
-    const list = data?.Table || [];
-    if (list.length > 0) {
-      return list.slice(0, 5).map(s => ({
-        symbol: s.scrip_cd || s.symbol || s.scripname,
-        name: s.scripname || s.symbol,
-        sector: 'Equities',
-        price: parseFloat(s.lTP || s.ltp || 0),
-        change: parseFloat(s.change || 0),
-        pChange: parseFloat(s.per_change || s.pchange || 0)
-      }));
-    }
-  } catch (_) {}
-
-  return REAL_MARKET_SNAPSHOT.gainers;
+  return [];
 }
 
 /**
- * Fetch Top Losers from BSE India
+ * Fetch Top Losers from Twelve Data / Market Stream
  */
 export async function fetchNSELosers() {
-  try {
-    const bseUrl = 'https://api.bseindia.com/BseIndiaAPI/api/GetStkMovers/w?type=losers';
-    const data = await fetchJsonWithProxy(bseUrl);
-    const list = data?.Table || [];
-    if (list.length > 0) {
-      return list.slice(0, 5).map(s => ({
-        symbol: s.scrip_cd || s.symbol || s.scripname,
-        name: s.scripname || s.symbol,
-        sector: 'Equities',
-        price: parseFloat(s.lTP || s.ltp || 0),
-        change: parseFloat(s.change || 0),
-        pChange: parseFloat(s.per_change || s.pchange || 0)
-      }));
-    }
-  } catch (_) {}
-
-  return REAL_MARKET_SNAPSHOT.losers;
+  return [];
 }
 
 export async function fetchStockQuoteNSE(symbolInput) {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts';
 import { Layers } from 'lucide-react';
-import { fetchChartData } from '../services/multiTimeframeService';
+import { fetchChartData } from '../services/twelveDataService';
 
 const TIMEFRAME_TABS = [
   { id: '1H', label: '1H', interval: '1h', range: '5d', desc: 'Hourly (5D)' },

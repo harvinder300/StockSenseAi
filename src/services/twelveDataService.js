@@ -25,7 +25,7 @@ export const fetchQuote = async (symbol, apiKey = null) => {
 
     // Handle API errors
     if (data.status === 'error' || data.code) {
-      console.warn(`Twelve Data error for ${formatted}:`, data.message || data.code);
+      console.error(`Twelve Data error for ${formatted}:`, data.message || data.code);
       return null;
     }
 
@@ -83,7 +83,7 @@ export const fetchChartData = async (symbol, apiKey = null, outputSize = 90) => 
     const data = await res.json();
 
     if (data.status === 'error' || !data.values || data.values.length === 0) {
-      if (data?.message) console.warn('Twelve Data Chart error:', data.message);
+      if (data?.message) console.error('Twelve Data Chart error:', data.message);
       return null;
     }
 

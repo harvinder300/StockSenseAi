@@ -1,36 +1,35 @@
 export const POPULAR_STOCKS = [
-  { symbol: 'RELIANCE', name: 'Reliance Industries Ltd.', sector: 'Energy & Oil', price: 2984.50, change: 34.20, pChange: 1.16, niftyWeight: 9.8, mood: 'Bullish' },
-  { symbol: 'TCS', name: 'Tata Consultancy Services Ltd.', sector: 'IT Services', price: 3842.10, change: -18.40, pChange: -0.48, niftyWeight: 4.2, mood: 'Sideways' },
-  { symbol: 'HDFCBANK', name: 'HDFC Bank Ltd.', sector: 'Banking & Financials', price: 1684.75, change: 22.10, pChange: 1.33, niftyWeight: 11.5, mood: 'Bullish' },
-  { symbol: 'ICICIBANK', name: 'ICICI Bank Ltd.', sector: 'Banking & Financials', price: 1245.30, change: 14.80, pChange: 1.20, niftyWeight: 7.9, mood: 'Bullish' },
-  { symbol: 'INFY', name: 'Infosys Ltd.', sector: 'IT Services', price: 1812.40, change: -24.60, pChange: -1.34, niftyWeight: 5.8, mood: 'Bearish' },
-  { symbol: 'BHARTIARTL', name: 'Bharti Airtel Ltd.', sector: 'Telecom', price: 1540.90, change: 31.50, pChange: 2.09, niftyWeight: 4.1, mood: 'Bullish' },
-  { symbol: 'ITC', name: 'ITC Ltd.', sector: 'FMCG', price: 492.30, change: 3.40, pChange: 0.70, niftyWeight: 3.8, mood: 'Bullish' },
-  { symbol: 'TATAMOTORS', name: 'Tata Motors Ltd.', sector: 'Automobile', price: 985.60, change: 28.40, pChange: 2.97, niftyWeight: 2.7, mood: 'Bullish' },
-  { symbol: 'LT', name: 'Larsen & Toubro Ltd.', sector: 'Construction', price: 3620.00, change: -42.10, pChange: -1.15, niftyWeight: 3.6, mood: 'Bearish' },
-  { symbol: 'SBIN', name: 'State Bank of India', sector: 'Banking & Financials', price: 845.20, change: 9.70, pChange: 1.16, niftyWeight: 3.1, mood: 'Bullish' },
-  { symbol: 'GLAND', name: 'Gland Pharma Ltd.', sector: 'Pharmaceuticals', price: 1380.00, change: 12.50, pChange: 0.91, niftyWeight: 0.5, mood: 'Bullish' },
-  { symbol: 'CGPOWER', name: 'CG Power and Industrial Solutions Ltd.', sector: 'Capital Goods', price: 878.90, change: 8.90, pChange: 1.02, niftyWeight: 0.6, mood: 'Bullish' },
-  { symbol: 'STALLION', name: 'Stallion India Fluorochemicals Ltd.', sector: 'Chemicals', price: 253.70, change: 3.70, pChange: 1.48, niftyWeight: 0.1, mood: 'Bullish' },
-  { symbol: 'HAL', name: 'Hindustan Aeronautics Ltd.', sector: 'Aerospace & Defence', price: 4620.00, change: 85.00, pChange: 1.87, niftyWeight: 1.2, mood: 'Bullish' },
-  { symbol: 'ZOMATO', name: 'Eternal Ltd. (Zomato)', sector: 'Consumer Services', price: 262.40, change: 4.80, pChange: 1.86, niftyWeight: 1.1, mood: 'Bullish' },
-  { symbol: 'JIOFIN', name: 'Jio Financial Services Ltd.', sector: 'Financial Services', price: 342.10, change: 2.60, pChange: 0.77, niftyWeight: 0.9, mood: 'Bullish' },
-  { symbol: 'SUZLON', name: 'Suzlon Energy Ltd.', sector: 'Renewable Energy', price: 74.50, change: 1.80, pChange: 2.48, niftyWeight: 0.4, mood: 'Bullish' },
-  { symbol: 'DMART', name: 'Avenue Supermarts Ltd. (DMart)', sector: 'Retail', price: 4850.00, change: 42.00, pChange: 0.87, niftyWeight: 0.9, mood: 'Bullish' },
-  { symbol: 'TRENT', name: 'Trent Ltd.', sector: 'Retail', price: 7120.00, change: 145.00, pChange: 2.08, niftyWeight: 1.4, mood: 'Bullish' },
-  { symbol: 'AXISBANK', name: 'Axis Bank Ltd.', sector: 'Banking & Financials', price: 1175.40, change: -8.30, pChange: -0.70, niftyWeight: 2.9, mood: 'Sideways' },
-  { symbol: 'BAJFINANCE', name: 'Bajaj Finance Ltd.', sector: 'Financial Services', price: 6840.00, change: -112.00, pChange: -1.61, niftyWeight: 2.3, mood: 'Bearish' },
-  { symbol: 'MARUTI', name: 'Maruti Suzuki India Ltd.', sector: 'Automobile', price: 12410.00, change: 185.00, pChange: 1.51, niftyWeight: 1.8, mood: 'Bullish' },
-  { symbol: 'SUNPHARMA', name: 'Sun Pharmaceutical Inds.', sector: 'Healthcare', price: 1735.00, change: 19.50, pChange: 1.14, niftyWeight: 1.7, mood: 'Bullish' },
-  { symbol: 'TITAN', name: 'Titan Company Ltd.', sector: 'Consumer Goods', price: 3450.20, change: -38.40, pChange: -1.10, niftyWeight: 1.4, mood: 'Bearish' },
-  { symbol: 'ULTRACEMCO', name: 'UltraTech Cement Ltd.', sector: 'Cement', price: 11240.00, change: 140.00, pChange: 1.26, niftyWeight: 1.2, mood: 'Bullish' },
-  { symbol: 'TATASTEEL', name: 'Tata Steel Ltd.', sector: 'Metals & Mining', price: 164.80, change: 3.20, pChange: 1.98, niftyWeight: 1.1, mood: 'Bullish' },
-  { symbol: 'NTPC', name: 'NTPC Ltd.', sector: 'Power & Energy', price: 398.50, change: 7.10, pChange: 1.81, niftyWeight: 1.5, mood: 'Bullish' },
-  { symbol: 'WIPRO', name: 'Wipro Ltd.', sector: 'IT Services', price: 512.60, change: -6.40, pChange: -1.23, niftyWeight: 0.8, mood: 'Bearish' },
-  { symbol: 'ADANIENT', name: 'Adani Enterprises Ltd.', sector: 'Conglomerates', price: 3120.00, change: -74.50, pChange: -2.33, niftyWeight: 0.9, mood: 'Bearish' }
+  { symbol: 'RELIANCE', name: 'Reliance Industries Ltd.', sector: 'Energy & Oil' },
+  { symbol: 'TCS', name: 'Tata Consultancy Services Ltd.', sector: 'IT Services' },
+  { symbol: 'HDFCBANK', name: 'HDFC Bank Ltd.', sector: 'Banking & Financials' },
+  { symbol: 'ICICIBANK', name: 'ICICI Bank Ltd.', sector: 'Banking & Financials' },
+  { symbol: 'INFY', name: 'Infosys Ltd.', sector: 'IT Services' },
+  { symbol: 'BHARTIARTL', name: 'Bharti Airtel Ltd.', sector: 'Telecom' },
+  { symbol: 'ITC', name: 'ITC Ltd.', sector: 'FMCG' },
+  { symbol: 'TATAMOTORS', name: 'Tata Motors Ltd.', sector: 'Automobile' },
+  { symbol: 'LT', name: 'Larsen & Toubro Ltd.', sector: 'Construction' },
+  { symbol: 'SBIN', name: 'State Bank of India', sector: 'Banking & Financials' },
+  { symbol: 'GLAND', name: 'Gland Pharma Ltd.', sector: 'Pharmaceuticals' },
+  { symbol: 'CGPOWER', name: 'CG Power and Industrial Solutions Ltd.', sector: 'Capital Goods' },
+  { symbol: 'STALLION', name: 'Stallion India Fluorochemicals Ltd.', sector: 'Chemicals' },
+  { symbol: 'HAL', name: 'Hindustan Aeronautics Ltd.', sector: 'Aerospace & Defence' },
+  { symbol: 'ZOMATO', name: 'Eternal Ltd. (Zomato)', sector: 'Consumer Services' },
+  { symbol: 'JIOFIN', name: 'Jio Financial Services Ltd.', sector: 'Financial Services' },
+  { symbol: 'SUZLON', name: 'Suzlon Energy Ltd.', sector: 'Renewable Energy' },
+  { symbol: 'DMART', name: 'Avenue Supermarts Ltd. (DMart)', sector: 'Retail' },
+  { symbol: 'TRENT', name: 'Trent Ltd.', sector: 'Retail' },
+  { symbol: 'AXISBANK', name: 'Axis Bank Ltd.', sector: 'Banking & Financials' },
+  { symbol: 'BAJFINANCE', name: 'Bajaj Finance Ltd.', sector: 'Financial Services' },
+  { symbol: 'MARUTI', name: 'Maruti Suzuki India Ltd.', sector: 'Automobile' },
+  { symbol: 'SUNPHARMA', name: 'Sun Pharmaceutical Inds.', sector: 'Healthcare' },
+  { symbol: 'TITAN', name: 'Titan Company Ltd.', sector: 'Consumer Goods' },
+  { symbol: 'ULTRACEMCO', name: 'UltraTech Cement Ltd.', sector: 'Cement' },
+  { symbol: 'TATASTEEL', name: 'Tata Steel Ltd.', sector: 'Metals & Mining' },
+  { symbol: 'NTPC', name: 'NTPC Ltd.', sector: 'Power & Energy' },
+  { symbol: 'WIPRO', name: 'Wipro Ltd.', sector: 'IT Services' },
+  { symbol: 'ADANIENT', name: 'Adani Enterprises Ltd.', sector: 'Conglomerates' }
 ];
 
-// Company name to NSE Ticker Alias Lookup Map
 export const COMPANY_NAME_MAP = {
   'GLAND': 'GLAND',
   'GLAND PHARMA': 'GLAND',
@@ -71,18 +70,4 @@ export const COMPANY_NAME_MAP = {
   'SBI': 'SBIN',
   'STATE BANK': 'SBIN',
   'STATE BANK OF INDIA': 'SBIN'
-};
-
-export const INDICES_DATA = {
-  nifty: { name: 'NIFTY 50', price: 24835.40, change: 162.30, pChange: 0.66, high: 24890.10, low: 24690.50, prevClose: 24673.10 },
-  sensex: { name: 'SENSEX', price: 81381.60, change: 515.20, pChange: 0.64, high: 81520.40, low: 80890.10, prevClose: 80866.40 }
-};
-
-export const MARKET_MOOD = {
-  verdict: 'Bullish',
-  score: 68,
-  description: 'Strong retail & institutional buying in Banking, Automobile, and Telecom sectors. Nifty holding key support above 24,700.',
-  advances: 34,
-  declines: 16,
-  unchanged: 0
 };

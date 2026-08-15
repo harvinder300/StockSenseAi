@@ -3,7 +3,7 @@
  * Reusable Live Stock Search input with automated company name ticker resolution
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { searchStocks, resolveTicker } from '../services/stockSearchService';
+import { searchStocks, resolveTicker } from '../services/nseService';
 import { stripHtml, rateLimiter } from '../utils/security';
 import { Search, AlertTriangle } from 'lucide-react';
 

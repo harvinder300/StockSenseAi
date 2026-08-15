@@ -13,14 +13,12 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
   const [analysisRes, setAnalysisRes] = useState({ data: null, isLimitReached: false });
   const [loading, setLoading] = useState(true);
 
-  const alphaKey = localStorage.getItem('alphavantage_api_key') || null;
-
   // Main analysis pipeline
   const runAnalysis = useCallback(async (sym) => {
     setLoading(true);
     setAnalysisRes({ data: null, isLimitReached: false });
     try {
-      const result = await getFullStockAnalysis(sym, geminiApiKey, alphaKey);
+      const result = await getFullStockAnalysis(sym, geminiApiKey);
       setAnalysisRes(result || { data: null, isLimitReached: false });
     } catch (err) {
       console.error('Analysis error:', err);
@@ -28,7 +26,7 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
     } finally {
       setLoading(false);
     }
-  }, [geminiApiKey, alphaKey]);
+  }, [geminiApiKey]);
 
   useEffect(() => { runAnalysis(symbol); }, [symbol]);
 

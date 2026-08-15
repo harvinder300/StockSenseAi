@@ -38,7 +38,7 @@ export default function HomePage({ onSelectStock, onNavigate }) {
           if (losersData && losersData.length > 0) setTopLosers(losersData);
         }
       } catch (err) {
-        console.warn('Home page NSE fetch error:', err);
+        console.error('Home page NSE fetch error:', err);
       } finally {
         if (isMounted) setLoading(false);
       }
