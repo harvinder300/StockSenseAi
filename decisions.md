@@ -217,5 +217,17 @@ Each entry records the user's query, the root cause identified, the decision mad
   4. **Dynamic Badge**: Render `🟢 NSE REAL-TIME` badge in green when `isRealTime === true`; render `⚪ NSE EOD` badge in grey/slate when live stream is unavailable.
   5. **Dynamic Color Coding**: Color coding uses the actual sign of `changePercent` (`isPositive = pChange >= 0`). Never hardcode green or positive arrows for negative changes.
 - **Files Changed**: `src/services/twelveDataService.js`, `src/services/stockSearchService.js`, `src/pages/AnalyserPage.jsx`, `src/pages/ComparePage.jsx`, `decisions.md`
+- **Commit**: `87416cf`
+
+### 18:52 IST — User Query: "CRITICAL FIX — Stock data not loading for ANY stock... FIX 1-5"
+- **Root Cause**: Stock queries like `ADANIENT` failed because symbol format mismatch or unhandled Twelve Data endpoints.
+- **Decision & Fixes**:
+  1. Created `src/utils/symbolResolver.js` with `SYMBOL_CORRECTIONS` map, `resolveSymbolForTwelveData(input)` (returning `CORRECTED:NSE`), and `resolveSymbolForStooq(input)` (returning `corrected.in`).
+  2. Updated `twelveDataService.js` with `fetchQuote`, `fetchChartData`, `fetchFundamentals` (statistics + profile), and `fetchIndices`.
+  3. Updated `stooqService.js` to fallback to `fetchStooqChart` returning clean 90-day daily OHLCV candles.
+  4. Created `src/services/dataOrchestrator.js` running parallel stock data loading (`loadStockData`) and home page index loading (`loadHomePageData`).
+  5. Updated `ErrorStateCard.jsx` (`NotFoundState`) rendering troubleshooting tips for symbol names, API key configuration, and Twelve Data status links.
+- **Files Changed**: `src/utils/symbolResolver.js`, `src/services/twelveDataService.js`, `src/services/stooqService.js`, `src/services/dataOrchestrator.js`, `src/components/ErrorStateCard.jsx`, `decisions.md`
 - **Commit**: (this commit)
+
 

@@ -1,136 +1,105 @@
 /**
  * twelveDataService.js
- * Twelve Data API Core Service — Official Market Data Engine for Indian Equities
- * Uses colon format: SYMBOL:NSE (e.g. STALLION:NSE, RELIANCE:NSE, CGPOWER:NSE)
- * Free Tier: 800 API calls/day (twelvedata.com)
+ * Twelve Data API Core Service — Quotes, Time Series, Fundamentals & Benchmark Indices
  */
+
+import { resolveSymbolForTwelveData } from '../utils/symbolResolver';
 
 export function getStoredTwelveKey() {
   return localStorage.getItem('twelvedata_api_key') || '';
 }
 
-/**
- * Symbol Formatter for Twelve Data API
- * Converts STALLION, STALLION.NS, STALLION.NSE -> STALLION:NSE
- */
-export const formatForTwelveData = (symbol) => {
-  if (!symbol) return 'RELIANCE:NSE';
-  const clean = symbol
-    .replace(/\.NS$/i, '')
-    .replace(/\.BO$/i, '')
-    .replace(/\.NSE$/i, '')
-    .replace(/:NSE$/i, '')
-    .replace(/:BSE$/i, '')
-    .replace(/\.IN$/i, '')
-    .trim()
-    .toUpperCase();
-
-  return `${clean}:NSE`;
-};
-
-/**
- * Twelve Data Rate Limit & Error Handler
- */
-export const handleTwelveDataError = (data) => {
-  if (data?.code === 429 || data?.message?.toLowerCase().includes('limit') || data?.code === 401) {
-    return {
-      error: true,
-      message: 'Daily Twelve Data quote limit reached (800 calls/day). Resets at midnight. Chart data remains active.',
-      showChart: true,
-      showQuote: false
-    };
-  }
-  return null;
-};
-
-/**
- * Fetch real-time stock quote from Twelve Data
- */
-export async function fetchRealTimeQuote(symbolInput, apiKey = null) {
+// Single stock quote
+export const fetchQuote = async (symbol, apiKey = null) => {
   const keyToUse = apiKey || getStoredTwelveKey();
   if (!keyToUse) return null;
 
-  const bare = symbolInput.trim().toUpperCase().replace(/\.(NS|BO|BSE|NSE|IN)$/i, '').replace(/:NSE$/i, '');
-  const formattedSymbol = formatForTwelveData(bare);
-
-  const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(formattedSymbol)}&apikey=${encodeURIComponent(keyToUse)}`;
+  const formatted = resolveSymbolForTwelveData(symbol);
 
   try {
+    const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(formatted)}&apikey=${encodeURIComponent(keyToUse)}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
 
     const data = await res.json();
-    const rateErr = handleTwelveDataError(data);
-    if (rateErr || data?.status === 'error' || data?.code || !data.close) {
-      if (data?.message) console.warn('Twelve Data quote message:', data.message);
+
+    // Handle API errors
+    if (data.status === 'error' || data.code) {
+      console.warn(`Twelve Data error for ${formatted}:`, data.message || data.code);
       return null;
     }
 
-    const price = parseFloat(data.close || data.price) || 0;
-    if (price <= 0) return null;
+    if (!data.close) return null;
 
+    const price = parseFloat(data.close || data.price) || 0;
     const prevClose = parseFloat(data.previous_close || data.close) || price;
     const change = parseFloat((price - prevClose).toFixed(2));
-    const changePercent = parseFloat(((price - prevClose) / (prevClose || 1) * 100).toFixed(2));
+    const changePct = parseFloat(((price - prevClose) / (prevClose || 1) * 100).toFixed(2));
 
-    const high52 = parseFloat(data.fifty_two_week?.high) || (price * 1.15);
-    const low52 = parseFloat(data.fifty_two_week?.low) || (price * 0.85);
+    const cleanSymbol = symbol.trim().toUpperCase().replace(/\.(NS|BO|BSE|NSE|IN)$/i, '').replace(/:NSE$/i, '');
 
     return {
-      symbol: bare,
-      companyName: data.name || `${bare} Ltd.`,
+      symbol: cleanSymbol,
+      formattedSymbol: formatted,
+      price: price,
       currentPrice: price,
-      price,
+      previousClose: prevClose,
       open: parseFloat(data.open) || price,
       high: parseFloat(data.high) || price,
       low: parseFloat(data.low) || price,
-      previousClose: prevClose,
-      change,
-      pChange: changePercent,
-      changePercent,
-      high52: +high52.toFixed(2),
-      low52: +low52.toFixed(2),
+      change: change,
+      pChange: changePct,
+      changePercent: changePct,
       volume: parseInt(data.volume) || 0,
-      currency: data.currency || 'INR',
-      isRealTime: true
+      name: data.name || `${cleanSymbol} Ltd.`,
+      companyName: data.name || `${cleanSymbol} Ltd.`,
+      exchange: data.exchange || 'NSE',
+      high52: parseFloat(data.fifty_two_week?.high) || (price * 1.15),
+      low52: parseFloat(data.fifty_two_week?.low) || (price * 0.85),
+      isRealTime: true,
+      source: 'Twelve Data'
     };
+
   } catch (err) {
-    console.warn(`fetchRealTimeQuote failed for ${symbolInput}:`, err);
+    console.error('Twelve Data fetch failed:', err);
     return null;
   }
-}
+};
 
-export const fetchQuoteTwelveData = fetchRealTimeQuote;
+export const fetchRealTimeQuote = fetchQuote;
 
-/**
- * Fetch 90-day daily OHLCV candlestick series from Twelve Data
- */
-export async function fetchChartTwelveData(symbolInput, apiKey = null) {
+// Chart data (time series)
+export const fetchChartData = async (symbol, apiKey = null, outputSize = 90) => {
   const keyToUse = apiKey || getStoredTwelveKey();
-  if (!keyToUse) return { candles: [] };
+  if (!keyToUse) return null;
 
-  const bare = symbolInput.trim().toUpperCase().replace(/\.(NS|BO|BSE|NSE|IN)$/i, '').replace(/:NSE$/i, '');
-  const formattedSymbol = formatForTwelveData(bare);
-  const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(formattedSymbol)}&interval=1day&outputsize=90&apikey=${encodeURIComponent(keyToUse)}`;
+  const formatted = resolveSymbolForTwelveData(symbol);
 
   try {
+    const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(formatted)}&interval=1day&outputsize=${outputSize}&apikey=${encodeURIComponent(keyToUse)}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
-    if (!res.ok) return { candles: [] };
+    if (!res.ok) return null;
 
     const data = await res.json();
-    if (data?.status === 'error' || !Array.isArray(data?.values)) return { candles: [] };
 
-    const candles = data.values
-      .map(v => {
-        const time = v.datetime;
-        const open = parseFloat(v.open) || 0;
-        const high = parseFloat(v.high) || 0;
-        const low = parseFloat(v.low) || 0;
-        const close = parseFloat(v.close) || 0;
-        const volume = parseFloat(v.volume) || 0;
+    if (data.status === 'error' || !data.values || data.values.length === 0) {
+      if (data?.message) console.warn('Twelve Data Chart error:', data.message);
+      return null;
+    }
+
+    // Parse and sort ascending for chart
+    return data.values
+      .map(candle => {
+        const datetimeStr = candle.datetime;
+        const open = parseFloat(candle.open) || 0;
+        const high = parseFloat(candle.high) || 0;
+        const low = parseFloat(candle.low) || 0;
+        const close = parseFloat(candle.close) || 0;
+        const volume = parseInt(candle.volume) || 0;
+
         return {
-          time,
-          rawTime: new Date(time).getTime() / 1000,
+          time: datetimeStr,
+          rawTime: new Date(datetimeStr).getTime() / 1000,
           open: open > 0 ? open : close,
           high: high > 0 ? high : close,
           low: low > 0 ? low : close,
@@ -138,95 +107,149 @@ export async function fetchChartTwelveData(symbolInput, apiKey = null) {
           volume
         };
       })
-      .filter(c => c.close > 0)
+      .filter(c => c.open && c.high && c.low && c.close)
       .sort((a, b) => a.rawTime - b.rawTime);
 
-    return { candles };
   } catch (err) {
-    console.warn(`fetchChartTwelveData failed for ${symbolInput}:`, err);
-    return { candles: [] };
+    console.error('Twelve Data Chart fetch failed:', err);
+    return null;
   }
-}
+};
 
-/**
- * Fetch live NIFTY 50 and SENSEX benchmark index quotes from Twelve Data
- */
-export async function fetchIndicesTwelveData(apiKey = null) {
+export const fetchChartTwelveData = fetchChartData;
+
+// Fundamental data
+export const fetchFundamentals = async (symbol, apiKey = null) => {
   const keyToUse = apiKey || getStoredTwelveKey();
   if (!keyToUse) return null;
 
-  const url = `https://api.twelvedata.com/quote?symbol=NIFTY50:NSE,SENSEX:BSE&apikey=${encodeURIComponent(keyToUse)}`;
+  const formatted = resolveSymbolForTwelveData(symbol);
 
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return null;
+    // Fetch multiple endpoints in parallel
+    const [statsRes, profileRes] = await Promise.allSettled([
+      fetch(`https://api.twelvedata.com/statistics?symbol=${encodeURIComponent(formatted)}&apikey=${encodeURIComponent(keyToUse)}`, { signal: AbortSignal.timeout(5000) }),
+      fetch(`https://api.twelvedata.com/profile?symbol=${encodeURIComponent(formatted)}&apikey=${encodeURIComponent(keyToUse)}`, { signal: AbortSignal.timeout(5000) })
+    ]);
 
-    const data = await res.json();
-    let niftyData = null;
-    let sensexData = null;
+    let stats = null;
+    let profile = null;
 
-    const parseIndexObj = (name, obj) => {
-      if (!obj || obj.status === 'error') return null;
-      const price = parseFloat(obj.close || obj.price) || 0;
-      if (price <= 0) return null;
-      const prevClose = parseFloat(obj.previous_close || obj.close) || price;
-      const change = parseFloat((price - prevClose).toFixed(2));
-      const pChange = parseFloat(((price - prevClose) / (prevClose || 1) * 100).toFixed(2));
-      const high = parseFloat(obj.high) || (price * 1.005);
-      const low = parseFloat(obj.low) || (price * 0.995);
-      return { name, price: +price.toFixed(2), change, pChange, high: +high.toFixed(2), low: +low.toFixed(2), isRealTime: true };
+    if (statsRes.status === 'fulfilled' && statsRes.value.ok) {
+      stats = await statsRes.value.json();
+    }
+
+    if (profileRes.status === 'fulfilled' && profileRes.value.ok) {
+      profile = await profileRes.value.json();
+    }
+
+    if (!stats || stats.status === 'error') return null;
+
+    const v = stats.statistics?.valuations_metrics;
+    const f = stats.statistics?.financials;
+    const s = stats.statistics?.stock_statistics;
+
+    return {
+      // Valuation
+      pe: parseFloat(v?.trailing_pe) || null,
+      forwardPe: parseFloat(v?.forward_pe) || null,
+      pb: parseFloat(v?.price_to_book_mrq) || null,
+      peg: parseFloat(v?.peg_ratio) || null,
+
+      // Profitability  
+      roe: parseFloat(f?.return_on_equity_ttm) || null,
+      roa: parseFloat(f?.return_on_assets_ttm) || null,
+      profitMargin: parseFloat(f?.profit_margin) || null,
+      operatingMargin: parseFloat(f?.operating_margin_ttm) || null,
+
+      // Growth
+      revenueGrowth: parseFloat(f?.quarterly_revenue_growth_yoy) || null,
+      earningsGrowth: parseFloat(f?.quarterly_earnings_growth_yoy) || null,
+
+      // Health
+      debtToEquity: parseFloat(s?.total_debt_to_equity_mrq) || null,
+      currentRatio: parseFloat(s?.current_ratio_mrq) || null,
+
+      // Moving averages
+      ma50: parseFloat(s?.['50_day_moving_average']) || null,
+      ma200: parseFloat(s?.['200_day_moving_average']) || null,
+
+      // 52 week
+      high52: parseFloat(s?.['52_week_high']) || null,
+      low52: parseFloat(s?.['52_week_low']) || null,
+
+      // Company info
+      sector: profile?.sector || null,
+      industry: profile?.industry || null,
+      description: profile?.description || null,
+
+      source: 'Twelve Data'
     };
 
-    if (data['NIFTY50:NSE']) niftyData = parseIndexObj('NIFTY 50', data['NIFTY50:NSE']);
-    else if (data.symbol?.includes('NIFTY50')) niftyData = parseIndexObj('NIFTY 50', data);
-
-    if (data['SENSEX:BSE']) sensexData = parseIndexObj('SENSEX', data['SENSEX:BSE']);
-    else if (data.symbol?.includes('SENSEX')) sensexData = parseIndexObj('SENSEX', data);
-
-    if (niftyData || sensexData) {
-      return { nifty: niftyData, sensex: sensexData };
-    }
   } catch (err) {
-    console.warn('fetchIndicesTwelveData error:', err);
+    console.error('Fundamentals failed:', err);
+    return null;
+  }
+};
+
+export const fetchFundamentalsTwelveData = fetchFundamentals;
+
+// Benchmark indices
+export const fetchIndices = async (apiKey = null) => {
+  const keyToUse = apiKey || getStoredTwelveKey();
+  if (!keyToUse) return null;
+
+  try {
+    const [niftyRes, sensexRes] = await Promise.allSettled([
+      fetch(`https://api.twelvedata.com/quote?symbol=NIFTY50:NSE&apikey=${encodeURIComponent(keyToUse)}`, { signal: AbortSignal.timeout(5000) }),
+      fetch(`https://api.twelvedata.com/quote?symbol=SENSEX:BSE&apikey=${encodeURIComponent(keyToUse)}`, { signal: AbortSignal.timeout(5000) })
+    ]);
+
+    let nifty = null;
+    let sensex = null;
+
+    if (niftyRes.status === 'fulfilled' && niftyRes.value.ok) {
+      nifty = await niftyRes.value.json();
+    }
+
+    if (sensexRes.status === 'fulfilled' && sensexRes.value.ok) {
+      sensex = await sensexRes.value.json();
+    }
+
+    const parseIndex = (data, defaultName) => {
+      if (!data || data.status === 'error' || !data.close) return null;
+      const price = parseFloat(data.close);
+      const prev = parseFloat(data.previous_close || data.close) || price;
+      const change = parseFloat((price - prev).toFixed(2));
+      const changePercent = parseFloat(((price - prev) / (prev || 1) * 100).toFixed(2));
+      return {
+        name: defaultName,
+        price: price,
+        change: change,
+        pChange: changePercent,
+        changePercent: changePercent,
+        high: parseFloat(data.high) || price,
+        low: parseFloat(data.low) || price,
+        isPositive: price >= prev,
+        isRealTime: true
+      };
+    };
+
+    const niftyObj = parseIndex(nifty, 'NIFTY 50');
+    const sensexObj = parseIndex(sensex, 'SENSEX');
+
+    if (niftyObj || sensexObj) {
+      return {
+        nifty: niftyObj,
+        sensex: sensexObj
+      };
+    }
+
+  } catch (err) {
+    console.error('Indices fetch failed:', err);
   }
 
   return null;
-}
+};
 
-/**
- * Fetch Fundamental Statistics from Twelve Data
- */
-export async function fetchFundamentalsTwelveData(symbolInput, apiKey = null) {
-  const keyToUse = apiKey || getStoredTwelveKey();
-  if (!keyToUse) return null;
-
-  const bare = symbolInput.trim().toUpperCase().replace(/\.(NS|BO|BSE|NSE|IN)$/i, '').replace(/:NSE$/i, '');
-  const formattedSymbol = formatForTwelveData(bare);
-  const url = `https://api.twelvedata.com/statistics?symbol=${encodeURIComponent(formattedSymbol)}&apikey=${encodeURIComponent(keyToUse)}`;
-
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    if (data?.status === 'error') return null;
-
-    const stats = data?.statistics || {};
-    const valuations = stats?.valuations_metrics || {};
-    const financials = stats?.financials || {};
-
-    return {
-      symbol: bare,
-      pe: parseFloat(valuations.trailing_pe) || null,
-      pb: parseFloat(valuations.price_to_book) || null,
-      eps: parseFloat(financials.diluted_eps_ttm) || null,
-      roe: parseFloat(financials.return_on_equity_ttm) || null,
-      profitMargin: parseFloat(financials.profit_margin) || null,
-      revenueGrowth: parseFloat(financials.quarterly_revenue_growth_yoy) || null,
-      debtToEquity: parseFloat(financials.total_debt_to_equity) || null,
-      dividendYield: parseFloat(valuations.trailing_annual_dividend_yield) || null
-    };
-  } catch (_) {
-    return null;
-  }
-}
+export const fetchIndicesTwelveData = fetchIndices;

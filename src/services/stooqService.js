@@ -1,9 +1,9 @@
 /**
  * stooqService.js
- * Stooq.com API Integration — 100% Free & Unlimited Historical Candlestick Chart Data for Indian Equities
- * Format: https://stooq.com/q/d/l/?s={symbol}.in&i=d
- * NO API KEY REQUIRED, NO RATE LIMITS
+ * Stooq.com API Integration — 100% Free & Unlimited Historical Chart Fallback
  */
+
+import { resolveSymbolForStooq } from '../utils/symbolResolver';
 
 const CORS_PROXIES = [
   (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
@@ -19,7 +19,6 @@ export function parseStooqCSV(csvText) {
   const lines = csvText.trim().split('\n');
   if (lines.length <= 1) return [];
 
-  // First line is header: Date,Open,High,Low,Close,Volume
   const header = lines[0].toLowerCase().split(',');
   const dateIdx = header.findIndex(h => h.includes('date'));
   const openIdx = header.findIndex(h => h.includes('open'));
@@ -44,31 +43,28 @@ export function parseStooqCSV(csvText) {
     const close = parseFloat(parts[closeIdx]) || 0;
     const volume = parseFloat(parts[volIdx]) || 0;
 
-    if (dateStr && close > 0) {
+    if (dateStr && close > 0 && open > 0 && high > 0 && low > 0) {
       candles.push({
         time: dateStr,
         rawTime: new Date(dateStr).getTime() / 1000,
-        open: open > 0 ? open : close,
-        high: high > 0 ? high : close,
-        low: low > 0 ? low : close,
+        open,
+        high,
+        low,
         close,
         volume
       });
     }
   }
 
-  // Sort ascending by date
   return candles.sort((a, b) => a.rawTime - b.rawTime);
 }
 
 /**
- * Fetches 6-month daily candlestick chart data from Stooq.com
+ * Fetches 90-day daily candlestick chart data from Stooq.com
  */
-export async function fetchChartDataStooq(symbolInput) {
-  if (!symbolInput) return { candles: [] };
-  const bare = symbolInput.trim().toLowerCase().replace(/\.(ns|bo|bse|nse|in)$/i, '');
-  const stooqSymbol = `${bare}.in`;
-
+export async function fetchStooqChart(symbol) {
+  if (!symbol) return null;
+  const stooqSymbol = resolveSymbolForStooq(symbol);
   const url = `https://stooq.com/q/d/l/?s=${stooqSymbol}&i=d`;
 
   // 1. Direct fetch
@@ -77,7 +73,7 @@ export async function fetchChartDataStooq(symbolInput) {
     if (res.ok) {
       const csvText = await res.text();
       const candles = parseStooqCSV(csvText);
-      if (candles.length > 0) return { candles };
+      if (candles.length > 0) return candles.slice(-90);
     }
   } catch (_) {}
 
@@ -88,7 +84,7 @@ export async function fetchChartDataStooq(symbolInput) {
     if (res.ok) {
       const csvText = await res.text();
       const candles = parseStooqCSV(csvText);
-      if (candles.length > 0) return { candles };
+      if (candles.length > 0) return candles.slice(-90);
     }
     throw new Error('Proxy failed');
   });
@@ -96,6 +92,11 @@ export async function fetchChartDataStooq(symbolInput) {
   try {
     return await Promise.any(proxyPromises);
   } catch (_) {
-    return { candles: [] };
+    return null;
   }
 }
+
+export const fetchChartDataStooq = async (symbol) => {
+  const candles = await fetchStooqChart(symbol);
+  return { candles: candles || [] };
+};
