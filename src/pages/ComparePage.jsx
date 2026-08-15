@@ -56,17 +56,36 @@ function StockResultCard({ data, isWinner }) {
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
             <span className="ss-badge ss-badge-blue" style={{ fontSize: 10 }}>{data.meta.sector}</span>
-            <span className="ss-badge ss-badge-green" style={{ fontSize: 10, display: 'inline-flex', gap: 4 }}><Wifi size={9} /> NSE Real-Time</span>
+            {data.meta.isRealTime ? (
+              <span className="ss-badge ss-badge-green" style={{ fontSize: 10, display: 'inline-flex', gap: 4 }}><Wifi size={9} /> NSE REAL-TIME</span>
+            ) : (
+              <span className="ss-badge" style={{ fontSize: 10, display: 'inline-flex', gap: 4, background: 'rgba(255,255,255,0.08)', color: '#8892a4' }}>NSE EOD</span>
+            )}
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 24, fontWeight: 700, color: '#fff' }}>
             ₹{data.meta.price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4, fontSize: 13, fontWeight: 800, color: pctColor }}>
-            {data.meta.pChange >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-            {data.meta.change >= 0 ? '+' : ''}{data.meta.change} ({data.meta.pChange}%)
-          </div>
+          {(() => {
+            const pVal = data.meta.pChange !== null && data.meta.pChange !== undefined ? parseFloat(data.meta.pChange) : null;
+            const cVal = data.meta.change !== null && data.meta.change !== undefined ? parseFloat(data.meta.change) : null;
+            const hasData = pVal !== null && !isNaN(pVal);
+            const isPos = hasData ? pVal >= 0 : true;
+            const color = !hasData ? '#8892a4' : (isPos ? '#00ff88' : '#ff4757');
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4, fontSize: 13, fontWeight: 800, color }}>
+                {hasData ? (
+                  <>
+                    {isPos ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                    {isPos ? '+' : ''}{cVal} ({isPos ? '+' : ''}{pVal.toFixed(2)}%)
+                  </>
+                ) : (
+                  <span style={{ fontSize: 11, color: '#8892a4' }}>Live % N/A</span>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
 

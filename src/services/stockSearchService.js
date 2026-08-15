@@ -1,12 +1,12 @@
 /**
  * stockSearchService.js
- * Primary Data Layer Engine powered by Twelve Data API (Quotes & Candlestick Series)
- * Secondary Fallback: Stooq.com & Yahoo v8 Chart
+ * Primary Data Layer Engine powered by Twelve Data API (Real-Time Quotes & Candlestick Series)
+ * Secondary Fallback: Stooq.com (Historical Candles for Charts ONLY)
  */
 
 import { stripHtml } from '../utils/security';
 import { fetchChartDataStooq } from './stooqService';
-import { fetchQuoteTwelveData, fetchChartTwelveData } from './twelveDataService';
+import { fetchRealTimeQuote, fetchChartTwelveData } from './twelveDataService';
 import { COMPANY_NAME_MAP, POPULAR_STOCKS } from '../data/indianStocks';
 
 const CORS_PROXIES = [
@@ -19,7 +19,7 @@ const CORS_PROXIES = [
  */
 export function resolveTicker(input) {
   if (!input) return 'RELIANCE';
-  const clean = input.trim().toUpperCase().replace(/\.(NS|BO|BSE|NSE|IN)$/i, '');
+  const clean = input.trim().toUpperCase().replace(/\.(NS|BO|BSE|NSE|IN)$/i, '').replace(/:NSE$/i, '');
 
   if (COMPANY_NAME_MAP[clean]) {
     return COMPANY_NAME_MAP[clean];
@@ -174,146 +174,98 @@ export async function searchStocks(query) {
 /**
  * Fetches REAL market price and REAL OHLCV candles
  * Primary Source: Twelve Data API (Quotes & Candlesticks)
- * Secondary Sources: Stooq.com & Yahoo Public Chart v8
+ * Secondary Sources: Stooq.com (Historical Candles for Charts ONLY)
+ * Rule: NEVER calculate change or % change from Stooq historical candle diff!
  */
 export async function fetchOHLCV(symbolInput, twelveKey = null) {
   if (!symbolInput) return null;
   const bare = resolveTicker(symbolInput);
   const localMeta = POPULAR_STOCKS.find(s => s.symbol === bare);
 
-  // 1. Primary Engine: Twelve Data API (Quote + 90-Day Time Series in parallel)
+  // 1. Fetch Real-Time Quote from Twelve Data & Historical Chart Candles in Parallel
+  let quote = null;
+  let candles = [];
+
   try {
-    const [quoteRes, chartRes] = await Promise.allSettled([
-      fetchQuoteTwelveData(bare, twelveKey),
-      fetchChartTwelveData(bare, twelveKey)
+    const [quoteRes, chartRes, stooqRes] = await Promise.allSettled([
+      fetchRealTimeQuote(bare, twelveKey),
+      fetchChartTwelveData(bare, twelveKey),
+      fetchChartDataStooq(bare)
     ]);
 
-    const quote = quoteRes.status === 'fulfilled' ? quoteRes.value : null;
-    const twelveCandles = chartRes.status === 'fulfilled' ? (chartRes.value?.candles || []) : [];
-
-    // If Twelve Data returned a quote OR candles
-    if (quote || twelveCandles.length > 0) {
-      let candles = twelveCandles;
-
-      // If Twelve Data candles are empty, fetch Stooq candles in background
-      if (candles.length === 0) {
-        try {
-          const stooqRes = await fetchChartDataStooq(bare);
-          if (stooqRes?.candles && stooqRes.candles.length > 0) {
-            candles = stooqRes.candles;
-          }
-        } catch (_) {}
-      }
-
-      const price = quote?.currentPrice || (candles.length > 0 ? candles[candles.length - 1].close : 0);
-
-      if (price > 0 || candles.length > 0) {
-        let change = quote?.change || 0;
-        let pChange = quote?.pChange || 0;
-
-        if (!quote && candles.length >= 2) {
-          const lastC = candles[candles.length - 1];
-          const prevC = candles[candles.length - 2];
-          change = +(lastC.close - prevC.close).toFixed(2);
-          pChange = +(((lastC.close - prevC.close) / (prevC.close || 1)) * 100).toFixed(2);
-        }
-
-        const high52 = quote?.high52 || (candles.length > 0 ? Math.max(...candles.map(c => c.high)) : price * 1.15);
-        const low52 = quote?.low52 || (candles.length > 0 ? Math.min(...candles.map(c => c.low)) : price * 0.85);
-
-        return {
-          candles,
-          meta: {
-            symbol: bare,
-            fullName: `${bare}.NSE`,
-            name: quote?.companyName || localMeta?.name || `${bare} Ltd.`,
-            exchange: 'NSE',
-            price,
-            change,
-            pChange,
-            high52: +high52.toFixed(2),
-            low52: +low52.toFixed(2),
-            currency: 'INR',
-          },
-          isLimitReached: false
-        };
-      }
-    }
-  } catch (_) {}
-
-  // 2. Secondary Engine: Stooq.com + Yahoo v8 Parallel Race
-  try {
-    const yahooSymbol = `${bare}.NS`;
-    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?range=6mo&interval=1d&includePrePost=false&_=${Date.now()}`;
-
-    const [stooqRes, yahooRes] = await Promise.allSettled([
-      fetchChartDataStooq(bare),
-      fetchWithProxy(yahooUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } })
-    ]);
-
-    const stooqCandles = stooqRes.status === 'fulfilled' ? (stooqRes.value?.candles || []) : [];
-
-    let yahooMeta = null;
-    let yahooCandles = [];
-    if (yahooRes.status === 'fulfilled' && yahooRes.value?.chart?.result?.[0]) {
-      const result = yahooRes.value.chart.result[0];
-      const meta = result.meta || {};
-      const price = parseFloat(meta.regularMarketPrice) || 0;
-      const prevClose = parseFloat(meta.chartPreviousClose || meta.previousClose) || 0;
-
-      if (price > 0) {
-        yahooMeta = {
-          price,
-          prevClose,
-          change: +(price - prevClose).toFixed(2),
-          pChange: +(((price - prevClose) / (prevClose || 1)) * 100).toFixed(2),
-          name: stripHtml(meta.longName || meta.shortName || bare),
-          exchange: stripHtml(meta.exchangeName || 'NSE'),
-          high52: parseFloat(meta.fiftyTwoWeekHigh) || 0,
-          low52: parseFloat(meta.fiftyTwoWeekLow) || 0,
-          currency: stripHtml(meta.currency || 'INR')
-        };
-      }
-
-      yahooCandles = parseChartData(yahooRes.value);
+    if (quoteRes.status === 'fulfilled' && quoteRes.value) {
+      quote = quoteRes.value;
     }
 
-    const candles = stooqCandles.length > 0 ? stooqCandles : yahooCandles;
-
-    if (candles.length > 0 || yahooMeta) {
-      const lastCandle = candles.length > 0 ? candles[candles.length - 1] : null;
-      const realPrice = yahooMeta?.price || lastCandle?.close || localMeta?.price || 0;
-
-      let change = yahooMeta?.change || 0;
-      let pChange = yahooMeta?.pChange || 0;
-
-      if (!yahooMeta && candles.length >= 2) {
-        const prev = candles[candles.length - 2];
-        change = +(lastCandle.close - prev.close).toFixed(2);
-        pChange = +(((lastCandle.close - prev.close) / (prev.close || 1)) * 100).toFixed(2);
-      }
-
-      const high52 = yahooMeta?.high52 || (candles.length > 0 ? Math.max(...candles.map(c => c.high)) : realPrice);
-      const low52 = yahooMeta?.low52 || (candles.length > 0 ? Math.min(...candles.map(c => c.low)) : realPrice);
-
-      return {
-        candles,
-        meta: {
-          symbol: bare,
-          fullName: `${bare}.NS`,
-          name: yahooMeta?.name || localMeta?.name || `${bare} Ltd.`,
-          exchange: yahooMeta?.exchange || 'NSE',
-          price: realPrice,
-          change,
-          pChange,
-          high52: +high52.toFixed(2),
-          low52: +low52.toFixed(2),
-          currency: yahooMeta?.currency || 'INR',
-        },
-        isLimitReached: false
-      };
+    if (chartRes.status === 'fulfilled' && chartRes.value?.candles?.length > 0) {
+      candles = chartRes.value.candles;
+    } else if (stooqRes.status === 'fulfilled' && stooqRes.value?.candles?.length > 0) {
+      candles = stooqRes.value.candles;
     }
-  } catch (_) {}
+  } catch (err) {
+    console.warn(`fetchOHLCV pipeline error for ${bare}:`, err);
+  }
+
+  // Fallback: If Twelve Data quote is null, try Stooq for candles only
+  if (!quote && candles.length === 0) {
+    try {
+      const stooqRes = await fetchChartDataStooq(bare);
+      if (stooqRes?.candles && stooqRes.candles.length > 0) {
+        candles = stooqRes.candles;
+      }
+    } catch (_) {}
+  }
+
+  const lastCandle = candles.length > 0 ? candles[candles.length - 1] : null;
+
+  // RULE 2: If Twelve Data Quote is Available -> Use Real Change & % Change
+  if (quote && quote.isRealTime) {
+    return {
+      candles,
+      meta: {
+        symbol: bare,
+        fullName: `${bare}:NSE`,
+        name: quote.companyName || localMeta?.name || `${bare} Ltd.`,
+        exchange: 'NSE',
+        price: quote.currentPrice,
+        change: quote.change,
+        pChange: quote.changePercent,
+        changePercent: quote.changePercent,
+        high52: quote.high52,
+        low52: quote.low52,
+        currency: 'INR',
+        isRealTime: true
+      },
+      isLimitReached: false
+    };
+  }
+
+  // RULE 2: If Twelve Data Quote is Unavailable -> NEVER CALCULATE FROM STOOQ CANDLES!
+  // Return price from last candle, set change & pChange to null, set isRealTime to false
+  if (lastCandle || localMeta) {
+    const price = lastCandle ? lastCandle.close : (localMeta?.price || 0);
+    const high52 = candles.length > 0 ? Math.max(...candles.map(c => c.high)) : (localMeta?.price ? localMeta.price * 1.15 : price * 1.15);
+    const low52 = candles.length > 0 ? Math.min(...candles.map(c => c.low)) : (localMeta?.price ? localMeta.price * 0.85 : price * 0.85);
+
+    return {
+      candles,
+      meta: {
+        symbol: bare,
+        fullName: `${bare}:NSE`,
+        name: localMeta?.name || `${bare} Ltd.`,
+        exchange: 'NSE',
+        price,
+        change: null,
+        pChange: null,
+        changePercent: null,
+        high52: +high52.toFixed(2),
+        low52: +low52.toFixed(2),
+        currency: 'INR',
+        isRealTime: false
+      },
+      isLimitReached: false
+    };
+  }
 
   return null;
 }

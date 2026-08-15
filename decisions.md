@@ -202,4 +202,20 @@ Each entry records the user's query, the root cause identified, the decision mad
 - **Root Cause**: External CORS proxies (`corsproxy.io` & `allorigins.win`) get rate limited or blocked on live production domains (Vercel `stock-sense-ai-nine.vercel.app`), causing `fetchWithProxy` to fail completely. Additionally, `DEFAULT_DEMO_KEY = 'demo'` failed for Indian `.NSE` stocks.
 - **Decision (PERMANENT ARCHITECTURE FIX)**: Made **Twelve Data API** (`api.twelvedata.com`) the **#1 Direct CORS-Free Data Engine** for Quotes, 90-day Daily Candlestick Charts (`time_series`), and Benchmark Indices (`NIFTY50.NSE`, `SENSEX.BSE`). Because Twelve Data natively sets `Access-Control-Allow-Origin: *`, browser calls **NEVER get blocked by CORS proxies** on Localhost or Vercel Production.
 - **Files Changed**: `src/services/twelveDataService.js`, `src/services/stockSearchService.js`, `src/services/nseService.js`, `decisions.md`
+- **Commit**: `390f758`
+
+---
+
+## 📅 2026-08-15 (Session 3)
+
+### 18:44 IST — User Query: "Fix incorrect stock price change % showing for ALL stocks... STEP 1-6 fix"
+- **Root Cause**: Twelve Data requires **colon format** (`SYMBOL:NSE`, e.g. `STALLION:NSE`). Previously, querying `STALLION.NSE` failed or returned null, which triggered a secondary fallback that calculated change % from Stooq's historical EOD candle diff (`lastCandle - prevCandle`). Because Stooq only has EOD historical candles without live session data, diffing EOD candles produced wildly incorrect values (e.g. STALLION showing +44.13% instead of -4.99%). Furthermore, UI was hardcoding green `NSE Real-Time` badge even when live quotes failed.
+- **Decision & Fixes**:
+  1. Updated Twelve Data symbol formatter helper `formatForTwelveData(symbol)` to use colon format `SYMBOL:NSE` (e.g., `STALLION:NSE`, `RELIANCE:NSE`, `CGPOWER:NSE`, `GLAND:NSE`).
+  2. Implemented `fetchRealTimeQuote()` returning exact `change` and `changePercent` calculated from `close` vs `previous_close`.
+  3. **STRICT RULE**: **NEVER CALCULATE CHANGE OR % CHANGE FROM STOOQ CANDLES!** If Twelve Data quote is unavailable, `change` and `pChange` are set to `null` (displaying N/A in grey), and `isRealTime` is set to `false`.
+  4. **Dynamic Badge**: Render `🟢 NSE REAL-TIME` badge in green when `isRealTime === true`; render `⚪ NSE EOD` badge in grey/slate when live stream is unavailable.
+  5. **Dynamic Color Coding**: Color coding uses the actual sign of `changePercent` (`isPositive = pChange >= 0`). Never hardcode green or positive arrows for negative changes.
+- **Files Changed**: `src/services/twelveDataService.js`, `src/services/stockSearchService.js`, `src/pages/AnalyserPage.jsx`, `src/pages/ComparePage.jsx`, `decisions.md`
 - **Commit**: (this commit)
+

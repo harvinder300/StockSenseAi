@@ -98,7 +98,15 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <span className="ss-stock-banner-sym">{analysis.meta.symbol}</span>
                 <span className="ss-badge ss-badge-blue">{analysis.meta.sector}</span>
-                <span className="ss-badge ss-badge-green" style={{ display: 'inline-flex', gap: 5 }}><Wifi size={11} /> NSE Real-Time</span>
+                {analysis.meta.isRealTime ? (
+                  <span className="ss-badge ss-badge-green" title="Live real-time market quote from Twelve Data API" style={{ display: 'inline-flex', gap: 5 }}>
+                    <Wifi size={11} /> NSE REAL-TIME
+                  </span>
+                ) : (
+                  <span className="ss-badge" title="Live data stream unavailable. Showing End-of-Day closing data." style={{ display: 'inline-flex', gap: 5, background: 'rgba(255,255,255,0.08)', color: '#8892a4', border: '1px solid rgba(255,255,255,0.12)' }}>
+                    NSE EOD
+                  </span>
+                )}
                 {analysis.aiAnalysis.isGeminiLive && (
                   <span className="ss-badge ss-badge-blue" style={{ display: 'inline-flex', gap: 5 }}><Sparkles size={11} /> Gemini Long-Term AI</span>
                 )}
@@ -107,10 +115,25 @@ export default function AnalyserPage({ selectedSymbol, onSymbolChange, geminiApi
             </div>
             <div>
               <div className="ss-stock-banner-price">₹{analysis.meta.price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
-              <div className="ss-stock-banner-chg" style={{ color: analysis.meta.change >= 0 ? '#00ff88' : '#ff4757' }}>
-                {analysis.meta.change >= 0 ? <ArrowUpRight size={15} /> : <ArrowDownRight size={15} />}
-                {analysis.meta.change >= 0 ? '+' : ''}{analysis.meta.change} ({analysis.meta.pChange}%)
-              </div>
+              {(() => {
+                const pVal = analysis.meta.pChange !== null && analysis.meta.pChange !== undefined ? parseFloat(analysis.meta.pChange) : null;
+                const cVal = analysis.meta.change !== null && analysis.meta.change !== undefined ? parseFloat(analysis.meta.change) : null;
+                const hasData = pVal !== null && !isNaN(pVal);
+                const isPos = hasData ? pVal >= 0 : true;
+                const color = !hasData ? '#8892a4' : (isPos ? '#00ff88' : '#ff4757');
+                return (
+                  <div className="ss-stock-banner-chg" style={{ color }}>
+                    {hasData ? (
+                      <>
+                        {isPos ? <ArrowUpRight size={15} /> : <ArrowDownRight size={15} />}
+                        {isPos ? '+' : ''}{cVal} ({isPos ? '+' : ''}{pVal.toFixed(2)}%)
+                      </>
+                    ) : (
+                      <span style={{ fontSize: 13, color: '#8892a4' }}>Live % change unavailable</span>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
