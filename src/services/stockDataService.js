@@ -6,42 +6,30 @@
 import { POPULAR_STOCKS } from '../data/indianStocks';
 import { calculateRSI, calculateMACD, detectPatterns, calculateConfidenceScore } from './technicalIndicators';
 import { analyzeFundamentalWithGemini } from './geminiService';
-import { fetchOHLCV, resolveTicker } from './stockSearchService';
+import { loadStockData } from './dataOrchestrator';
 import { fetchMultiTimeframeData } from './multiTimeframeService';
-import { fetchFundamentals } from './fundamentalService';
-import { fetchStockQuoteNSE } from './nseService';
 import { calculateSignal } from '../utils/signals';
 import { calculateEntryPoint } from '../utils/entryScoring';
 
-export async function getFullStockAnalysis(symbolInput, geminiApiKey = null, alphaKey = null) {
-  const bareSymbol = resolveTicker(symbolInput);
+export async function getFullStockAnalysis(symbolInput, geminiApiKey = null, twelveKey = null) {
+  const stockResult = await loadStockData(symbolInput, twelveKey, geminiApiKey);
 
-  // Step 1: Fetch NSE Real-Time Quote + Alpha Vantage OHLCV + Fundamentals in parallel
-  const [nseQuote, chartResult, multiData, fundamentalsRes] = await Promise.all([
-    fetchStockQuoteNSE(bareSymbol),
-    fetchOHLCV(bareSymbol, alphaKey),
-    fetchMultiTimeframeData(bareSymbol, alphaKey),
-    fetchFundamentals(bareSymbol, alphaKey)
-  ]);
-
-  const candles = chartResult?.candles || [];
-  const fundamentals = fundamentalsRes?.fundamentals || null;
-  const isLimitReached = chartResult?.isLimitReached || fundamentalsRes?.isLimitReached || false;
-
-  // If no quote and no candles available, analysis cannot proceed
-  if (!nseQuote && (!candles || candles.length === 0)) {
-    return { data: null, isLimitReached };
+  if (!stockResult.success) {
+    return { data: null, isLimitReached: false };
   }
+
+  const { symbol, quote, chartData: candles, fundamentals: remoteFundamentals } = stockResult;
+  const bareSymbol = symbol;
 
   // Step 2: Technical indicators calculation
   let rsi = { value: 50, status: 'Neutral', explanation: 'Neutral RSI' };
   let macd = { histogram: 0, macd: 0, signal: 0, status: 'Neutral', explanation: 'Neutral MACD' };
   let detectedPatterns = [];
   let confidence = 50;
-  let ma50 = nseQuote?.currentPrice || 0;
-  let ma200 = nseQuote?.currentPrice || 0;
+  let ma50 = quote?.price || (candles.length > 0 ? candles[candles.length - 1].close : 0);
+  let ma200 = quote?.price || ma50;
   let volumeRatio = 1.0;
-  let lastPrice = nseQuote?.currentPrice || (candles.length > 0 ? candles[candles.length - 1].close : 0);
+  let lastPrice = quote?.price || (candles.length > 0 ? candles[candles.length - 1].close : 0);
 
   if (candles.length >= 5) {
     const closes = candles.map(c => c.close);
@@ -91,20 +79,21 @@ export async function getFullStockAnalysis(symbolInput, geminiApiKey = null, alp
 
   const localMeta = POPULAR_STOCKS.find(s => s.symbol.toUpperCase() === bareSymbol);
 
-  // Priority: Real Stooq chart price > Twelve Data quote > hardcoded fallback
-  const realPrice = chartResult?.meta?.price || lastPrice;
-  const realChange = chartResult?.meta?.change || nseQuote?.change || 0;
-  const realPChange = chartResult?.meta?.pChange || nseQuote?.pChange || 0;
+  const price = quote?.price || lastPrice;
+  const change = quote?.change ?? null;
+  const pChange = quote?.changePercent ?? null;
+  const isRealTime = quote?.isRealTime || false;
 
   const meta = {
     symbol: bareSymbol,
-    name: chartResult?.meta?.name || nseQuote?.companyName || localMeta?.name || `${bareSymbol} Ltd.`,
-    sector: nseQuote?.industry || localMeta?.sector || 'NSE Equities',
-    price: realPrice,
-    change: realChange,
-    pChange: realPChange,
+    name: quote?.name || localMeta?.name || `${bareSymbol} Ltd.`,
+    sector: remoteFundamentals?.sector || localMeta?.sector || 'NSE Equities',
+    price,
+    change,
+    pChange,
     currency: 'INR',
     isLive: true,
+    isRealTime,
     ma50: +ma50.toFixed(2),
     ma200: +ma200.toFixed(2),
     volumeRatio
