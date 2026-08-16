@@ -249,6 +249,11 @@ Each entry records the user's query, the root cause identified, the decision mad
   2. Added a `/debug` endpoint in `main.py` to inspect API key state (`TWELVE_DATA_KEY`, `GEMINI_KEY`, `REDIS_URL`) and perform direct test queries against Twelve Data.
 - **Files Changed**: `stocksense-backend/services/twelve_data.py`, `stocksense-backend/main.py`, `decisions.md`
 
+### 18:06 IST — User Query: "Fix Indian indices fetching in stocksenseaibackend — Add /test-symbols endpoint"
+- **Diagnostic Enhancement**: Added `GET /test-symbols` endpoint in `stocksense-backend/main.py` testing candidate ticker symbols (`NIFTY50:NSE`, `NIFTY:NSE`, `NIFTY50`, `NIFTY`, `^NSEI`, `SENSEX:BSE`, `SENSEX`, `^BSESN`, `RELIANCE:NSE`, `RELIANCE`, `TCS:NSE`, `TCS`) and querying Twelve Data API plan usage (`/api_usage`).
+- **Files Changed**: `stocksense-backend/main.py`, `decisions.md`
+
+
 
 
 

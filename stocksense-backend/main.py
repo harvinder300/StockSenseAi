@@ -72,5 +72,62 @@ async def debug():
         "twelve_data_test": test_result
     }
 
+@app.get("/test-symbols")
+async def test_symbols():
+    from config import settings
+    import httpx
+    
+    results = {}
+    
+    # Test these symbol formats
+    symbols_to_test = [
+        "NIFTY50:NSE",
+        "NIFTY:NSE",
+        "NIFTY50",
+        "NIFTY",
+        "^NSEI",
+        "SENSEX:BSE",
+        "SENSEX",
+        "^BSESN",
+        "RELIANCE:NSE",
+        "RELIANCE",
+        "TCS:NSE",
+        "TCS"
+    ]
+    
+    async with httpx.AsyncClient() as client:
+        for symbol in symbols_to_test:
+            try:
+                res = await client.get(
+                    "https://api.twelvedata.com/quote",
+                    params={
+                        "symbol": symbol,
+                        "apikey": settings.TWELVE_DATA_KEY
+                    },
+                    timeout=8.0
+                )
+                data = res.json()
+                results[symbol] = {
+                    "status": data.get("status", "ok"),
+                    "has_close": bool(data.get("close")),
+                    "close": data.get("close"),
+                    "error": data.get("message") if data.get("status") == "error" else None
+                }
+            except Exception as e:
+                results[symbol] = {"error": str(e)}
+        
+        # Check API plan/credits
+        try:
+            plan_res = await client.get(
+                "https://api.twelvedata.com/api_usage",
+                params={"apikey": settings.TWELVE_DATA_KEY},
+                timeout=8.0
+            )
+            results["api_plan"] = plan_res.json()
+        except Exception as e:
+            results["api_plan"] = {"error": str(e)}
+    
+    return results
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
