@@ -240,6 +240,16 @@ Each entry records the user's query, the root cause identified, the decision mad
   6. **Deployment Blueprint (`render.yaml`)**: Pre-configured for zero-downtime deployment on Render with free managed Redis instance.
 - **Directory Created**: `stocksense-backend/` (24 modular Python files & configuration manifests).
 
+## 📅 2026-08-16 (Session 4)
+
+### 18:00 IST — User Query: "Fix the indices route in stocksenseaibackend & add /debug endpoint"
+- **Root Cause**: `fetch_indices()` in `stocksense-backend/services/twelve_data.py` previously attempted only single symbol representations (`NIFTY50:NSE` and `SENSEX:BSE`), returning null if Twelve Data's quote endpoint expected alternative ticker formats.
+- **Fix & Enhancements**:
+  1. Updated `fetch_indices()` in `services/twelve_data.py` to iterate through candidate ticker symbol formats (`["NIFTY50:NSE", "NIFTY:NSE", "^NSEI", "NIFTY50"]` for Nifty 50 and `["SENSEX:BSE", "SENSEX:NSE", "^BSESN", "SENSEX"]` for Sensex) with logging for diagnostic tracing.
+  2. Added a `/debug` endpoint in `main.py` to inspect API key state (`TWELVE_DATA_KEY`, `GEMINI_KEY`, `REDIS_URL`) and perform direct test queries against Twelve Data.
+- **Files Changed**: `stocksense-backend/services/twelve_data.py`, `stocksense-backend/main.py`, `decisions.md`
+
+
 
 
 

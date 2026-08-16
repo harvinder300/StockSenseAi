@@ -43,5 +43,34 @@ async def root():
 async def health():
     return {"status": "healthy"}
 
+@app.get("/debug")
+async def debug():
+    from config import settings
+    import httpx
+    
+    # Test Twelve Data directly
+    test_result = None
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                "https://api.twelvedata.com/quote",
+                params={
+                    "symbol": "NIFTY50:NSE",
+                    "apikey": settings.TWELVE_DATA_KEY
+                },
+                timeout=10.0
+            )
+            test_result = res.json()
+    except Exception as e:
+        test_result = {"error": str(e)}
+    
+    return {
+        "twelve_data_key_set": bool(settings.TWELVE_DATA_KEY),
+        "twelve_data_key_preview": settings.TWELVE_DATA_KEY[:8] + "..." if settings.TWELVE_DATA_KEY else "NOT SET",
+        "gemini_key_set": bool(settings.GEMINI_KEY),
+        "redis_url_set": bool(settings.REDIS_URL),
+        "twelve_data_test": test_result
+    }
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

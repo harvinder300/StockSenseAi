@@ -167,49 +167,99 @@ async def fetch_fundamentals(symbol: str):
     }
 
 async def fetch_indices():
-    async with httpx.AsyncClient() as client:
-        try:
-            nifty_res, sensex_res = await asyncio.gather(
-                client.get(
-                    f"{BASE_URL}/quote",
-                    params={
-                        "symbol": "NIFTY50:NSE",
-                        "apikey": settings.TWELVE_DATA_KEY
-                    },
-                    timeout=10.0
-                ),
-                client.get(
-                    f"{BASE_URL}/quote",
-                    params={
-                        "symbol": "SENSEX:BSE",
-                        "apikey": settings.TWELVE_DATA_KEY
-                    },
-                    timeout=10.0
-                ),
-                return_exceptions=True
-            )
-            nifty_data = nifty_res.json() if not isinstance(nifty_res, Exception) else {}
-            sensex_data = sensex_res.json() if not isinstance(sensex_res, Exception) else {}
-        except Exception:
-            return {"nifty": None, "sensex": None}
+    import logging
+    logger = logging.getLogger(__name__)
     
-    def parse_index(data):
-        if not data or data.get("status") == "error" or not data.get("close"):
-            return None
-        price = float(data.get("close", 0))
-        prev = float(data.get("previous_close", price))
-        change = price - prev
-        return {
-            "name": data.get("name", "INDEX"),
-            "price": round(price, 2),
-            "change": round(change, 2),
-            "changePercent": round((change / prev * 100), 2) if prev else 0.0,
-            "high": float(data.get("high", price)),
-            "low": float(data.get("low", price)),
-            "isPositive": change >= 0
-        }
+    if not settings.TWELVE_DATA_KEY:
+        logger.error("TWELVE_DATA_KEY not set")
+        return None
+    
+    logger.info(f"Using key: {settings.TWELVE_DATA_KEY[:8]}")
+    
+    async with httpx.AsyncClient() as client:
+        # Try multiple symbol formats
+        # Twelve Data uses different formats
+        nifty_symbols = [
+            "NIFTY50:NSE",
+            "NIFTY:NSE", 
+            "^NSEI",
+            "NIFTY50"
+        ]
+        sensex_symbols = [
+            "SENSEX:BSE",
+            "SENSEX:NSE",
+            "^BSESN",
+            "SENSEX"
+        ]
+        
+        nifty_data = None
+        sensex_data = None
+        
+        # Try each nifty symbol until one works
+        for symbol in nifty_symbols:
+            try:
+                res = await client.get(
+                    "https://api.twelvedata.com/quote",
+                    params={
+                        "symbol": symbol,
+                        "apikey": settings.TWELVE_DATA_KEY
+                    },
+                    timeout=10.0
+                )
+                data = res.json()
+                logger.info(f"Nifty {symbol}: {data.get('status', 'ok')} - close: {data.get('close')}")
+                
+                if data.get("status") != "error" and data.get("close"):
+                    price = float(data["close"])
+                    prev = float(data.get("previous_close", price))
+                    change = price - prev
+                    nifty_data = {
+                        "price": round(price, 2),
+                        "change": round(change, 2),
+                        "changePercent": round(change/prev*100, 2) if prev else 0,
+                        "high": float(data.get("high", 0)),
+                        "low": float(data.get("low", 0)),
+                        "isPositive": change >= 0,
+                        "symbol": symbol
+                    }
+                    break
+            except Exception as e:
+                logger.error(f"Nifty {symbol} error: {e}")
+                continue
+        
+        # Try each sensex symbol until one works
+        for symbol in sensex_symbols:
+            try:
+                res = await client.get(
+                    "https://api.twelvedata.com/quote",
+                    params={
+                        "symbol": symbol,
+                        "apikey": settings.TWELVE_DATA_KEY
+                    },
+                    timeout=10.0
+                )
+                data = res.json()
+                logger.info(f"Sensex {symbol}: {data.get('status', 'ok')} - close: {data.get('close')}")
+                
+                if data.get("status") != "error" and data.get("close"):
+                    price = float(data["close"])
+                    prev = float(data.get("previous_close", price))
+                    change = price - prev
+                    sensex_data = {
+                        "price": round(price, 2),
+                        "change": round(change, 2),
+                        "changePercent": round(change/prev*100, 2) if prev else 0,
+                        "high": float(data.get("high", 0)),
+                        "low": float(data.get("low", 0)),
+                        "isPositive": change >= 0,
+                        "symbol": symbol
+                    }
+                    break
+            except Exception as e:
+                logger.error(f"Sensex {symbol} error: {e}")
+                continue
     
     return {
-        "nifty": parse_index(nifty_data),
-        "sensex": parse_index(sensex_data)
+        "nifty": nifty_data,
+        "sensex": sensex_data
     }
